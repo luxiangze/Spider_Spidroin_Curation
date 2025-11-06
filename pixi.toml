@@ -25,6 +25,7 @@ csvtk = ">=0.34.0,<0.35"
 biopython = ">=1.85,<2"
 pybedtools = ">=0.12.0,<0.13"
 isoquant = ">=3.9.0,<4"
+natsort = ">=8.4.0,<9"
 
 [pypi-dependencies]
 mkdocs = "*"
@@ -34,5 +35,9 @@ spider_silkome_module = { path = ".", editable = true }
 [feature.mmseqs.dependencies]
 mmseqs2 = "*"
 
+[feature.agat.dependencies]
+agat = "*"
+
 [environments]
 mmseqs = ["mmseqs"]
+agat = ["agat"]

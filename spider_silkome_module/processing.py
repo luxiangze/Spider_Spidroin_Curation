@@ -3,7 +3,10 @@ Data Processing Function Module
 """
 
 from collections import defaultdict
+import re
 from typing import List
+
+from natsort import natsort_keygen, ns
 
 from spider_silkome_module.models import GFFData, Position
 
@@ -85,7 +88,19 @@ def extract_positions_from_gff(
             )
         )
 
-    # Sort by chromosome and strand
-    positions.sort(key=lambda x: (int(x.chr.replace("Chr", "")), x.strand))
+    # Sort by chromosome and strand with custom priority (chr > ctg > others)
+    nkey = natsort_keygen(alg=ns.IGNORECASE)
+
+    def chr_sort_key(x):
+        name = x.chr
+        if re.match(r"^chr", name, flags=re.IGNORECASE):
+            priority = 0
+        elif re.match(r"^ctg", name, flags=re.IGNORECASE):
+            priority = 1
+        else:
+            priority = 2
+        return (priority, nkey(name), x.strand)
+
+    positions.sort(key=chr_sort_key)
 
     return positions

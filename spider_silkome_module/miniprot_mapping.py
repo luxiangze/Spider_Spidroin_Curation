@@ -9,11 +9,13 @@ This module provides the complete pipeline for spidroin gene curation:
 
 import os
 from pathlib import Path
+import re
 import subprocess
 import time
 from typing import List, Optional
 
 from loguru import logger
+from natsort import natsort_keygen, ns
 import pandas as pd
 
 from spider_silkome_module import (
@@ -413,9 +415,21 @@ def combine_all_spidroins(
     # Save combined GFF file
     if all_gff_records:
         df_combined = pd.DataFrame(all_gff_records)
-        # Sort by chromosome and start position
-        df_combined["seqid_sort"] = df_combined["seqid"].str.extract(r"(\d+)").astype(float)
-        df_combined = df_combined.sort_values(["seqid_sort", "start"]).drop("seqid_sort", axis=1)
+        # Sort by chromosome and start position with natural sorting
+        nkey = natsort_keygen(alg=ns.IGNORECASE)
+
+        def get_sort_key(seqid):
+            """Generate sort key with priority: chr > ctg > others"""
+            if re.match(r"^chr", seqid, flags=re.IGNORECASE):
+                priority = 0
+            elif re.match(r"^ctg", seqid, flags=re.IGNORECASE):
+                priority = 1
+            else:
+                priority = 2
+            return (priority, nkey(seqid))
+
+        df_combined["sort_key"] = df_combined["seqid"].apply(lambda x: get_sort_key(x))
+        df_combined = df_combined.sort_values(["sort_key", "start"]).drop("sort_key", axis=1)
 
         # Write combined GFF file
         gff_output = f"{output_dir}/{spider_name}.gff"
@@ -575,7 +589,7 @@ def main():
     parser.add_argument(
         "--extension-length",
         type=int,
-        default=10000,
+        default=1000,
         help="Extension length when start or end is missing",
     )
 
