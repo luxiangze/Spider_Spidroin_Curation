@@ -21,9 +21,9 @@ from spider_silkome_module.features import run_shell_command_with_check
 from spider_silkome_module.models import (
     Attributes,
     GenePrediction,
+    GeneralGFF,
     GFFData,
     Position,
-    GeneralGFF,
 )
 
 # Import processing functions

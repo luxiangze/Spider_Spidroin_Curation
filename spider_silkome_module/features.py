@@ -1,10 +1,10 @@
 import os
-import subprocess
 from pathlib import Path
+import subprocess
 
-import typer
 from loguru import logger
 from tqdm import tqdm
+import typer
 
 from spider_silkome_module.config import PROCESSED_DATA_DIR
 

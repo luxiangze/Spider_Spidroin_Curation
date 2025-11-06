@@ -31,6 +31,7 @@ class GFFData:
     frame: str  # Reading frame ('0', '1', '2' or '.')
     attributes: Attributes  # Attribute Information
 
+
 @dataclass
 class GeneralGFF:
     """Data structure of the general gff file"""
@@ -52,9 +53,7 @@ class GeneralGFF:
             lines = f.readlines()
         # Filter out comment lines and empty lines, and split by tab
         gff_data = [
-            line.strip().split("\t")
-            for line in lines
-            if line.strip() and not line.startswith("#")
+            line.strip().split("\t") for line in lines if line.strip() and not line.startswith("#")
         ]
         # Filter out lines with insufficient fields (must have 9 fields)
         gff_data = [data for data in gff_data if len(data) == 9]
@@ -86,7 +85,7 @@ class GeneralGFF:
         output_file2: str,
     ) -> None:
         """Split GFF data by custom strings and write to files
-        
+
         Parameters
         ----------
         gff_data : List[GeneralGFF]
@@ -106,6 +105,7 @@ class GeneralGFF:
             for data in gff_data:
                 if not any(custom_str in data.attributes for custom_str in custom_strs):
                     f.write(f"{data.to_gff_line()}\n")
+
 
 @dataclass
 class Position:

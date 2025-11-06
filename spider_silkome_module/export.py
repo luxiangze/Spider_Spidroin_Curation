@@ -72,7 +72,9 @@ def positions_export(
     elif format.lower() == "gff":
         if spidroin is None:
             raise ValueError("The GFF format requires providing spidroin parameters.")
-        return _export_to_gff(spidroin, positions, output_file, min_length, max_length, extension_length)
+        return _export_to_gff(
+            spidroin, positions, output_file, min_length, max_length, extension_length
+        )
     else:
         raise ValueError(f"Unsupported format: {format}, please use 'csv' or 'gff'")
 
@@ -194,7 +196,7 @@ def _export_to_gff(
     output_file: str,
     min_length: int,
     max_length: int,
-    extension_length: int = 10000
+    extension_length: int = 10000,
 ) -> List[dict]:
     """
     Convert positions to GFF format gene predictions
@@ -249,7 +251,9 @@ def _export_to_gff(
             for start_pos in start_positions:
                 start_count = pos.start[start_pos]
                 # Calculate end position by extending forwards
-                end_pos = start_pos + extension_length ## ToDo: Consider the length of the chromosome
+                end_pos = (
+                    start_pos + extension_length
+                )  ## ToDo: Consider the length of the chromosome
                 length = end_pos - start_pos
                 score = start_count
 
