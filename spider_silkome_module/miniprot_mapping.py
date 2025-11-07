@@ -454,7 +454,7 @@ def run_miniprot_mapping_pipeline(
     positive_threshold: float = 0.75,
     min_length: int = 1000,
     max_length: int = 100000,
-    extension_length: int = 10000,
+    extension_length: int = 1000,
 ) -> None:
     """
     Run the complete miniprot mapping pipeline
