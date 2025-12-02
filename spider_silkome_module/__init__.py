@@ -10,6 +10,7 @@ from spider_silkome_module.config import (
     RAW_DATA_DIR,
     REPORTS_DIR,
     SCRIPTS_DIR,
+    REFERENCES_DIR
 )
 
 # Import export functions
@@ -43,6 +44,7 @@ __all__ = [
     "RAW_DATA_DIR",
     "REPORTS_DIR",
     "SCRIPTS_DIR",
+    "REFERENCES_DIR",
     # Export functions
     "positions_export",
     # Feature functions
