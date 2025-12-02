@@ -1,4 +1,4 @@
-[project]
+[workspace]
 name = "spider_silkome"
 description = "Spider Silkome"
 version = "0.1.0"
@@ -20,7 +20,6 @@ scikit-learn = "*"
 tqdm = "*"
 typer = "*"
 pip = "*"
-miniprot = "0.18.*"
 csvtk = ">=0.34.0,<0.35"
 biopython = ">=1.85,<2"
 pybedtools = ">=0.12.0,<0.13"
@@ -28,6 +27,8 @@ isoquant = ">=3.9.0,<4"
 natsort = ">=8.4.0,<9"
 gffread = ">=0.12.7,<0.13"
 diamond = ">=2.1.16,<3"
+augustus = ">=3.5.0,<4"
+hmmer = ">=3.4,<4"
 
 [pypi-dependencies]
 mkdocs = "*"
