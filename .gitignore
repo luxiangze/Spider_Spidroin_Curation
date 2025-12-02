@@ -198,3 +198,4 @@ RNA-seq_workflow/.nextflow
 RNA-seq_workflow/.nextflow.log*
 RNA-seq_workflow/work
 RNA-seq_workflow/results
+references/
