@@ -3,13 +3,10 @@
 Extract non-repetitive CTD/NTD terminal domain sequences from spidroin sequences.
 
 Algorithm:
-- For CTD: scan from C-terminus (end) toward N-terminus, stop at repeat region boundary
-- For NTD: scan from N-terminus (start) toward C-terminus, stop at repeat region boundary
-
-Repeat detection:
-- Use sliding window (size = sequence_length * ratio) to detect local repetitive regions
-- A window is repetitive if any triplet appears >= threshold times within the window
-- Default: ratio=0.03, threshold=3 (optimized for ~100aa terminal domains)
+1. Auto-detect repeat unit length using autocorrelation analysis
+2. Find repeat region boundary based on detected unit length
+3. Extract terminal domain (non-repetitive region)
+4. Fallback to triplet-based detection if no repeat unit found
 
 Output:
 - Sequences are grouped by spidroin type and domain type
@@ -23,9 +20,8 @@ Usage:
 Options:
     -o, --output DIR       Output directory (required)
     -s, --skip N           Skip first N sequences (default: 0)
-    -r, --max-repeat N     Triplet repeat threshold (default: 3)
-    -w, --window-ratio F   Window size as ratio of seq length (default: 0.03)
     -l, --min-length N     Minimum extracted length (default: 50)
+    --similarity F         Repeat unit similarity threshold (default: 0.5)
     --no-simplify          Keep original headers
 
 Example:
@@ -109,82 +105,146 @@ def get_domain_type(header: str) -> str:
     return 'UNKNOWN'
 
 
-def is_repetitive_window(sequence: str, start: int, window_size: int = 30, max_repeat: int = 2) -> bool:
+def find_repeat_unit_length(seq: str, min_len: int = 15, max_len: int = 300,
+                             min_similarity: float = 0.4) -> tuple[int | None, float]:
     """
-    Check if the window starting at 'start' is repetitive.
-    A window is repetitive if any triplet appears >= max_repeat times within it.
-    """
-    end = min(start + window_size, len(sequence))
-    if end - start < 6:  # Need at least 6 aa to have 2 overlapping triplets
-        return False
-
-    triplet_counts = Counter()
-    for i in range(start, end - 2):
-        triplet = sequence[i:i+3]
-        triplet_counts[triplet] += 1
-        if triplet_counts[triplet] >= max_repeat:
-            return True
-    return False
-
-
-def extract_non_repetitive_ctd(sequence: str, max_repeat: int = 3,
-                               window_size: int = None, window_ratio: float = 0.03) -> str:
-    """
-    Extract non-repetitive region from CTD sequence.
-    Scan from C-terminus (end) to N-terminus (start).
-    Stop when entering a repetitive region.
+    Auto-detect repeat unit length using autocorrelation.
 
     Args:
-        sequence: Input amino acid sequence
-        max_repeat: Triplet must appear this many times in window to be repetitive
-        window_size: Fixed size of sliding window (if None, use window_ratio)
-        window_ratio: Window size as ratio of sequence length (default: 0.03)
+        seq: Input amino acid sequence
+        min_len: Minimum repeat unit length to search
+        max_len: Maximum repeat unit length to search
+        min_similarity: Minimum similarity threshold to consider as repeat
+
+    Returns:
+        Tuple of (unit_length, similarity_score) or (None, 0) if not found
     """
-    # Calculate window size
-    if window_size is None:
-        window_size = max(6, int(len(sequence) * window_ratio))
+    seq_len = len(seq)
+    if seq_len < min_len * 2:
+        return None, 0
 
-    if len(sequence) < window_size:
-        return sequence
+    best_lag = None
+    best_score = 0
 
-    # Scan from end to start, find where repetitive region ends
-    start_pos = 0
-    for i in range(len(sequence) - window_size, -1, -1):
-        if is_repetitive_window(sequence, i, window_size, max_repeat):
-            start_pos = i + window_size
+    for lag in range(min_len, min(max_len, seq_len // 2)):
+        overlap_len = seq_len - lag
+        if overlap_len < lag:
             break
 
-    return sequence[start_pos:]
+        # Count character matches between seq[0:n-lag] and seq[lag:n]
+        matches = sum(1 for i in range(overlap_len) if seq[i] == seq[lag + i])
+        score = matches / overlap_len
+
+        if score >= min_similarity and score > best_score:
+            best_score = score
+            best_lag = lag
+
+    return best_lag, best_score
 
 
-def extract_non_repetitive_ntd(sequence: str, max_repeat: int = 3,
-                               window_size: int = None, window_ratio: float = 0.03) -> str:
+def find_repeat_boundary_ctd(seq: str, unit_len: int | None,
+                              similarity: float = 0.5) -> int:
     """
-    Extract non-repetitive region from NTD sequence.
-    Scan from N-terminus (start) to C-terminus (end).
-    Stop when entering a repetitive region.
+    Find where repeat region ends (for CTD extraction).
 
     Args:
-        sequence: Input amino acid sequence
-        max_repeat: Triplet must appear this many times in window to be repetitive
-        window_size: Fixed size of sliding window (if None, use window_ratio)
-        window_ratio: Window size as ratio of sequence length (default: 0.03)
+        seq: Input amino acid sequence
+        unit_len: Detected repeat unit length (None for fallback)
+        similarity: Similarity threshold for repeat detection
+
+    Returns:
+        Position where repeat region ends (CTD starts after this)
     """
-    # Calculate window size
-    if window_size is None:
-        window_size = max(6, int(len(sequence) * window_ratio))
+    seq_len = len(seq)
 
-    if len(sequence) < window_size:
-        return sequence
+    # Fallback: use triplet-based detection if no unit_len
+    if unit_len is None:
+        window = 30
+        for i in range(seq_len - window, -1, -1):
+            triplets = Counter(seq[j:j+3] for j in range(i, min(i + window, seq_len - 2)))
+            if any(c >= 3 for c in triplets.values()):
+                return i + window
+        return 0
 
-    # Scan from start to end, find where repetitive region starts
-    end_pos = len(sequence)
-    for i in range(len(sequence) - window_size + 1):
-        if is_repetitive_window(sequence, i, window_size, max_repeat):
-            end_pos = i
-            break
+    # Find the last position that is part of a repeat
+    repeat_end = 0
+    i = 0
+    while i + unit_len <= seq_len:
+        if i + unit_len * 2 <= seq_len:
+            unit = seq[i:i+unit_len]
+            next_unit = seq[i+unit_len:i+unit_len*2]
+            matches = sum(1 for a, b in zip(unit, next_unit) if a == b)
 
-    return sequence[:end_pos]
+            if matches / unit_len >= similarity:
+                repeat_end = i + unit_len * 2
+                i += unit_len
+                continue
+        i += 1
+
+    return repeat_end
+
+
+def find_repeat_boundary_ntd(seq: str, unit_len: int | None,
+                              similarity: float = 0.5) -> int:
+    """
+    Find where repeat region starts (for NTD extraction).
+
+    Args:
+        seq: Input amino acid sequence
+        unit_len: Detected repeat unit length (None for fallback)
+        similarity: Similarity threshold for repeat detection
+
+    Returns:
+        Position where repeat region starts (NTD ends before this)
+    """
+    seq_len = len(seq)
+
+    # Fallback: use triplet-based detection if no unit_len
+    if unit_len is None:
+        window = 30
+        for i in range(seq_len - window + 1):
+            triplets = Counter(seq[j:j+3] for j in range(i, min(i + window, seq_len - 2)))
+            if any(c >= 3 for c in triplets.values()):
+                return i
+        return seq_len
+
+    # Find first position that is part of a repeat
+    for i in range(seq_len - unit_len * 2 + 1):
+        unit = seq[i:i+unit_len]
+        next_unit = seq[i+unit_len:i+unit_len*2]
+        matches = sum(1 for a, b in zip(unit, next_unit) if a == b)
+        if matches / unit_len >= similarity:
+            return i
+
+    return seq_len
+
+
+def extract_terminal_domain(seq: str, domain_type: str,
+                            similarity: float = 0.5) -> tuple[str, int | None]:
+    """
+    Extract terminal domain from sequence.
+
+    Args:
+        seq: Input amino acid sequence
+        domain_type: 'CTD' or 'NTD'
+        similarity: Similarity threshold for repeat detection
+
+    Returns:
+        Tuple of (extracted_sequence, detected_unit_length)
+    """
+    # Auto-detect repeat unit length
+    unit_len, score = find_repeat_unit_length(seq)
+
+    if domain_type == 'CTD':
+        boundary = find_repeat_boundary_ctd(seq, unit_len, similarity)
+        extracted = seq[boundary:]
+    elif domain_type == 'NTD':
+        boundary = find_repeat_boundary_ntd(seq, unit_len, similarity)
+        extracted = seq[:boundary]
+    else:
+        extracted = seq
+
+    return extracted, unit_len
 
 
 def simplify_header(header: str) -> str:
@@ -205,8 +265,7 @@ def simplify_header(header: str) -> str:
 
 def process_record(
     record: SeqRecord,
-    max_repeat: int,
-    window_ratio: float,
+    similarity: float,
     simplify: bool
 ) -> tuple[SeqRecord, dict]:
     """
@@ -214,8 +273,7 @@ def process_record(
 
     Args:
         record: BioPython SeqRecord object
-        max_repeat: Maximum allowed triplet repeat count
-        window_ratio: Window size as ratio of sequence length
+        similarity: Similarity threshold for repeat detection
         simplify: Whether to simplify headers
 
     Returns:
@@ -232,15 +290,14 @@ def process_record(
         'domain_type': domain_type,
         'spidroin_type': spidroin_type,
         'extracted_length': len(seq),
+        'unit_length': None,
         'status': 'unchanged',
     }
 
-    if domain_type == 'CTD':
-        extracted = extract_non_repetitive_ctd(seq, max_repeat, window_ratio=window_ratio)
+    if domain_type in ('CTD', 'NTD'):
+        extracted, unit_len = extract_terminal_domain(seq, domain_type, similarity)
         info['status'] = 'processed'
-    elif domain_type == 'NTD':
-        extracted = extract_non_repetitive_ntd(seq, max_repeat, window_ratio=window_ratio)
-        info['status'] = 'processed'
+        info['unit_length'] = unit_len
     else:
         info['status'] = 'unknown_domain'
         extracted = seq
@@ -264,7 +321,8 @@ def write_report(report_path: str, infos: list[dict], args) -> None:
         f.write("# Terminal Domain Extraction Report\n")
         f.write(f"# Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write(f"# Input: {args.input}\n")
-        f.write(f"# Parameters: max_repeat={args.max_repeat}, window_ratio={args.window_ratio}\n")
+        f.write(f"# Parameters: similarity={args.similarity}, min_length={args.min_length}\n")
+        f.write("# Algorithm: Auto-detect repeat unit length + boundary detection\n")
         f.write(f"# Skipped: {args.skip} sequences\n")
         f.write("#\n")
 
@@ -288,12 +346,14 @@ def write_report(report_path: str, infos: list[dict], args) -> None:
 
         # Detailed records
         f.write("# Detailed Processing Log:\n")
-        f.write("Original_Header\tNew_Header\tSpidroin_Type\tDomain_Type\tOrig_Len\tNew_Len\tRatio\tStatus\n")
+        f.write("Original_Header\tNew_Header\tSpidroin_Type\tDomain_Type\tOrig_Len\tNew_Len\tUnit_Len\tRatio\tStatus\n")
         for info in infos:
             ratio = info['extracted_length'] / info['original_length'] * 100 if info['original_length'] > 0 else 0
+            unit_len = info.get('unit_length', '-')
+            unit_str = str(unit_len) if unit_len else 'fallback'
             f.write(f"{info['original_header']}\t{info['new_header']}\t{info['spidroin_type']}\t"
                     f"{info['domain_type']}\t{info['original_length']}\t{info['extracted_length']}\t"
-                    f"{ratio:.1f}%\t{info['status']}\n")
+                    f"{unit_str}\t{ratio:.1f}%\t{info['status']}\n")
 
 
 def main():
@@ -316,22 +376,16 @@ def main():
         help='Number of sequences to skip (already processed)'
     )
     parser.add_argument(
-        '-r', '--max-repeat',
-        type=int,
-        default=3,
-        help='Maximum allowed triplet repeat count in window (default: 3)'
-    )
-    parser.add_argument(
-        '-w', '--window-ratio',
-        type=float,
-        default=0.03,
-        help='Window size as ratio of sequence length (default: 0.03)'
-    )
-    parser.add_argument(
         '-l', '--min-length',
         type=int,
         default=50,
         help='Minimum length threshold for extracted sequences (default: 50)'
+    )
+    parser.add_argument(
+        '--similarity',
+        type=float,
+        default=0.5,
+        help='Repeat unit similarity threshold (default: 0.5)'
     )
     parser.add_argument(
         '--no-simplify',
@@ -367,13 +421,13 @@ def main():
                 'extracted_length': len(record.seq),
                 'domain_type': domain_type,
                 'spidroin_type': spidroin_type,
+                'unit_length': None,
                 'status': 'skipped',
             })
         else:
             new_record, info = process_record(
                 record,
-                max_repeat=args.max_repeat,
-                window_ratio=args.window_ratio,
+                similarity=args.similarity,
                 simplify=not args.no_simplify
             )
             # Filter by minimum length
@@ -385,10 +439,27 @@ def main():
             all_infos.append(info)
 
     # Write output files by spidroin type and domain type
+    all_ctd = []
+    all_ntd = []
     for (spidroin_type, domain_type), records_list in results_by_type.items():
         output_file = output_dir / f"{spidroin_type}_{domain_type}.faa"
         SeqIO.write(records_list, output_file, 'fasta')
         print(f"  {spidroin_type}_{domain_type}: {len(records_list)} sequences -> {output_file}", file=sys.stderr)
+        # Collect for Pan files
+        if domain_type == 'CTD':
+            all_ctd.extend(records_list)
+        elif domain_type == 'NTD':
+            all_ntd.extend(records_list)
+
+    # Write Pan files (all CTD and all NTD combined)
+    if all_ctd:
+        pan_ctd_file = output_dir / "PanSpidroin_CTD.faa"
+        SeqIO.write(all_ctd, pan_ctd_file, 'fasta')
+        print(f"  PanSpidroin_CTD: {len(all_ctd)} sequences -> {pan_ctd_file}", file=sys.stderr)
+    if all_ntd:
+        pan_ntd_file = output_dir / "PanSpidroin_NTD.faa"
+        SeqIO.write(all_ntd, pan_ntd_file, 'fasta')
+        print(f"  PanSpidroin_NTD: {len(all_ntd)} sequences -> {pan_ntd_file}", file=sys.stderr)
 
     # Write processing report
     report_path = output_dir / "processing_report.tsv"
