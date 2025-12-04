@@ -16,9 +16,6 @@ PYTHON_INTERPRETER = python
 requirements:
 	pixi install
 
-
-
-
 ## Delete all compiled Python files
 .PHONY: clean
 clean:
@@ -53,34 +50,6 @@ create_environment:
 	@echo ">>> Pixi environment will be created when running 'make requirements'"
 
 	@echo ">>> Activate with:\npixi shell"
-
-
-
-
-#################################################################################
-# PROJECT RULES                                                                 #
-#################################################################################
-
-
-## Make dataset
-.PHONY: data
-data: requirements
-	$(PYTHON_INTERPRETER) spider_silkome_module/dataset.py
-
-## Run spidroin curation pipeline (MMseqs2 clustering + miniprot mapping)
-.PHONY: miniprot_mapping
-miniprot_mapping: requirements
-	$(PYTHON_INTERPRETER) spider_silkome_module/miniprot_mapping.py
-
-## Run spidroin curation with custom parameters
-.PHONY: miniprot_mapping_custom
-miniprot_mapping_custom: requirements
-	$(PYTHON_INTERPRETER) spider_silkome_module/miniprot_mapping.py \
-		--positive-threshold 0.75 \
-		--min-length 1000 \
-		--max-length 100000 \
-		--extension-length 10000
-
 
 #################################################################################
 # Self Documenting Commands                                                     #
