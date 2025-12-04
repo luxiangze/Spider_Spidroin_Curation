@@ -29,6 +29,13 @@ gffread = ">=0.12.7,<0.13"
 diamond = ">=2.1.16,<3"
 augustus = ">=3.5.0,<4"
 hmmer = ">=3.4,<4"
+snakemake = ">=7.32.4,<8"
+star = ">=2.7.11b,<3"
+samtools = ">=1.22.1,<2"
+multiqc = ">=1.32,<2"
+fastqc = ">=0.12.1,<0.13"
+fastp = ">=1.0.1,<2"
+deeptools = ">=3.5.6,<4"
 
 [pypi-dependencies]
 mkdocs = "*"

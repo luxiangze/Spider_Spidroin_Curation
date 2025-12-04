@@ -199,3 +199,6 @@ RNA-seq_workflow/.nextflow.log*
 RNA-seq_workflow/work
 RNA-seq_workflow/results
 references/
+workflow/BGI_RNA_align/work
+workflow/BGI_RNA_align/.snakemake
+workflow/BGI_RNA_align/results

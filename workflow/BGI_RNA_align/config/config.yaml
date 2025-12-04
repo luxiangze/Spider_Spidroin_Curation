@@ -1,0 +1,64 @@
+# Configuration for multi-genome RNA alignment workflow
+
+# Project paths (relative to workflow directory)
+genome_dir: "../../data/raw/spider_genome"
+fastq_dir: "../../data/raw/BGI_RNA_10samples"
+work_dir: "work"
+results_dir: "results"
+
+# Genome to fastq folder mapping
+# Each genome maps to its corresponding fastq folder
+samples:
+  Araneus_ventricosus:
+    fastq_folder: "Araneus_ventricosus"
+  Evarcha_sp:
+    fastq_folder: "Evarcha_sp"
+  Heteropoda_venatoria:
+    fastq_folder: "Heteropoda_venatoria"
+  Hippasa_lycosina:
+    fastq_folder: "Hippasa_lycosina"
+  Pandercetes_sp:
+    fastq_folder: "Pandercetes_sp"
+  Pardosa_pseudoannulata:
+    fastq_folder: "Pardosa_pseudoannulata"
+  Pholcus_sp:
+    fastq_folder: "Pholcus_sp"
+  Scorpiops_zhui:
+    fastq_folder: "Scorpiops_zhui"
+  Songthela_sp:
+    fastq_folder: "Songthela_sp"
+  Trichonephila_clavata:
+    fastq_folder: "Trichonephila_clavata"
+
+# STAR index parameters
+# Index building: ~80GB per large genome, 252GB allows 2-3 parallel jobs
+star_index:
+  threads: 24
+  mem_gb: 100  # Memory limit per job in GB
+  sjdb_overhang: 100  # read_length - 1
+  genome_sa_index_n_bases: 14  # min(14, log2(genome_size)/2 - 1)
+
+# STAR alignment parameters
+# Alignment: ~40GB per job, 252GB allows 5-6 parallel jobs
+star_align:
+  threads: 12
+  mem_gb: 50  # Memory limit per job in GB
+  out_filter_multimap_nmax: 20
+  out_filter_mismatch_nmax: 10
+
+# Fastp QC parameters
+# fastp is fast, 4 threads is enough (allows 20 parallel jobs)
+fastp:
+  threads: 4
+  extra: "--qualified_quality_phred 20 --length_required 50"
+
+# BigWig parameters
+# bamCoverage benefits from multi-threading, 8 threads allows 10 parallel jobs
+bigwig:
+  threads: 8
+  bin_size: 10
+  normalize_using: "CPM"  # Options: RPKM, CPM, BPM, RPGC, None
+  stranded: false  # Set to true for strand-specific bigWig files
+
+# Fastq file suffix pattern
+fastq_suffix: ["_R1.fq.gz", "_R2.fq.gz"]

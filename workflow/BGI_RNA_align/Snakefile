@@ -1,0 +1,112 @@
+"""
+Multi-genome RNA-seq Alignment Workflow
+========================================
+
+This workflow aligns RNA-seq reads to multiple spider genomes using STAR.
+
+Usage:
+    # Dry run
+    snakemake -n
+
+    # Build indices only
+    snakemake build_all_indices --cores 16
+
+    # Run full pipeline
+    snakemake --cores 16
+
+    # Generate workflow DAG
+    snakemake --dag | dot -Tpng > dag.png
+"""
+
+import os
+from pathlib import Path
+
+
+# Load configuration
+configfile: "config/config.yaml"
+
+
+# Include rule modules
+include: "rules/common.smk"
+include: "rules/qc.smk"
+include: "rules/index.smk"
+include: "rules/align.smk"
+include: "rules/stats.smk"
+include: "rules/bigwig.smk"
+
+
+# Get genomes list from config
+GENOMES = get_genomes()
+
+
+# Determine bigwig outputs based on config
+def get_bigwig_outputs():
+    if config["bigwig"].get("stranded", False):
+        return expand(
+            os.path.join(config["results_dir"], "bigwig", "{genome}.{strand}.bw"),
+            genome=GENOMES,
+            strand=["fwd", "rev"],
+        )
+    return expand(
+        os.path.join(config["results_dir"], "bigwig", "{genome}.bw"),
+        genome=GENOMES,
+    )
+
+
+# Default target rule
+rule all:
+    """Main target: build indices and align each genome's RNA-seq data."""
+    input:
+        # All indices
+        expand(
+            os.path.join(config["work_dir"], "star_index", "{genome}"),
+            genome=GENOMES,
+        ),
+        # QC reports
+        os.path.join(config["results_dir"], "multiqc", "raw_reads_multiqc.html"),
+        os.path.join(config["results_dir"], "multiqc", "trimmed_reads_multiqc.html"),
+        # All final BAMs
+        expand(
+            os.path.join(config["results_dir"], "bam", "{genome}.bam"),
+            genome=GENOMES,
+        ),
+        # BigWig files
+        get_bigwig_outputs(),
+        # Alignment MultiQC report
+        os.path.join(config["results_dir"], "multiqc", "multiqc_report.html"),
+
+
+rule build_all_indices:
+    """Build STAR indices for all genomes."""
+    input:
+        expand(
+            os.path.join(config["work_dir"], "star_index", "{genome}"),
+            genome=GENOMES,
+        ),
+
+
+rule process_genome:
+    """Process a specific genome (QC, align, stats, bigwig)."""
+    input:
+        bam=os.path.join(config["results_dir"], "bam", "{genome}.bam"),
+        bw=os.path.join(config["results_dir"], "bigwig", "{genome}.bw"),
+    output:
+        touch(os.path.join(config["results_dir"], ".done.{genome}")),
+
+
+rule clean:
+    """Remove all generated files (work and results directories)."""
+    shell:
+        """
+        rm -rf {config[work_dir]} {config[results_dir]}
+        echo "Cleaned work and results directories."
+        """
+
+
+rule clean_work:
+    """Remove only work directory (keep results)."""
+    shell:
+        """
+        rm -rf {config[work_dir]}
+        echo "Cleaned work directory."
+        """
