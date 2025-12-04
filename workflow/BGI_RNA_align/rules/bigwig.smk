@@ -5,7 +5,7 @@ rule bam_to_bigwig:
     """Convert BAM to bigWig for genome browser visualization."""
     input:
         bam=os.path.join(config["results_dir"], "bam", "{genome}.bam"),
-        bai=os.path.join(config["results_dir"], "bam", "{genome}.bam.bai"),
+        csi=os.path.join(config["results_dir"], "bam", "{genome}.bam.csi"),
     output:
         os.path.join(config["results_dir"], "bigwig", "{genome}.bw"),
     log:
@@ -28,7 +28,7 @@ rule bam_to_bigwig_stranded:
     """Generate strand-specific bigWig files."""
     input:
         bam=os.path.join(config["results_dir"], "bam", "{genome}.bam"),
-        bai=os.path.join(config["results_dir"], "bam", "{genome}.bam.bai"),
+        csi=os.path.join(config["results_dir"], "bam", "{genome}.bam.csi"),
     output:
         fwd=os.path.join(config["results_dir"], "bigwig", "{genome}.fwd.bw"),
         rev=os.path.join(config["results_dir"], "bigwig", "{genome}.rev.bw"),

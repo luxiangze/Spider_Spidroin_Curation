@@ -44,7 +44,7 @@ rule star_align:
 
 
 rule samtools_index:
-    """Index BAM file."""
+    """Index BAM file using CSI index for large genomes."""
     input:
         os.path.join(
             config["work_dir"], "aligned", "{genome}",
@@ -53,13 +53,13 @@ rule samtools_index:
     output:
         os.path.join(
             config["work_dir"], "aligned", "{genome}",
-            "Aligned.sortedByCoord.out.bam.bai"
+            "Aligned.sortedByCoord.out.bam.csi"
         ),
     log:
         os.path.join(config["work_dir"], "logs", "samtools_index", "{genome}.log"),
     shell:
         """
-        samtools index {input} 2>&1 | tee {log}
+        samtools index -c {input} 2>&1 | tee {log}
         """
 
 
@@ -70,15 +70,15 @@ rule copy_final_bam:
             config["work_dir"], "aligned", "{genome}",
             "Aligned.sortedByCoord.out.bam"
         ),
-        bai=os.path.join(
+        csi=os.path.join(
             config["work_dir"], "aligned", "{genome}",
-            "Aligned.sortedByCoord.out.bam.bai"
+            "Aligned.sortedByCoord.out.bam.csi"
         ),
     output:
         bam=os.path.join(config["results_dir"], "bam", "{genome}.bam"),
-        bai=os.path.join(config["results_dir"], "bam", "{genome}.bam.bai"),
+        csi=os.path.join(config["results_dir"], "bam", "{genome}.bam.csi"),
     shell:
         """
         cp {input.bam} {output.bam}
-        cp {input.bai} {output.bai}
+        cp {input.csi} {output.csi}
         """
