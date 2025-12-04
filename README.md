@@ -1,67 +1,84 @@
-# Spider Spidroin Curation (SpiderSc)
+# Spider Silkome
 
 <a target="_blank" href="https://cookiecutter-data-science.drivendata.org/">
     <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter" />
 </a>
 
-蜘蛛丝蛋白（Spidroin）基因鉴定和注释的生物信息学流程。
+蜘蛛丝蛋白（Spidroin）自动化注释与表达分析流程。
 
 ## 快速开始
 
 ```bash
-make requirements    # 安装依赖
-pixi shell          # 激活环境
-make miniprot_mapping  # 运行 Miniprot Mapping 流程
-```
+# 安装依赖
+pixi install
 
-📖 **详细文档**: [docs/docs/index.md](https://github.com/luxiangze/Spider_Spidroin_Curation/blob/main/docs/docs/index.md)
+# 激活环境
+pixi shell
+
+# 运行 Spidroin 注释流程（Jupyter Notebook）
+jupyter lab notebooks/Automated_spidroin_annotation.ipynb
+
+# 运行 RNA-seq 比对流程
+cd workflow/BGI_RNA_align
+pixi run snakemake --cores 80 --resources mem_gb=240
+```
 
 ## 主要功能
 
-- ✅ Miniprot 蛋白-基因组比对
-- ✅ 基因边界自动预测
-- ✅ 按 Spidroin 类型分类
-- 🔄 人工修正（进行中）
-- ⏳ 转录组/基因组注释整合（待实现）
-- ⏳ k-mer 特征扫描（待实现）
+### Spidroin 自动化注释
+- ✅ nhmmer 搜索 Spidroin N/C 端序列
+- ✅ 多物种批量分析（10 个蜘蛛基因组）
+- ✅ Augustus 基因结构预测
+- ✅ 蛋白序列提取
 
-## 文档
-
-- [项目主页](https://github.com/luxiangze/Spider_Spidroin_Curation/blob/main/docs/docs/index.md) - 项目概览
-- [快速入门](https://github.com/luxiangze/Spider_Spidroin_Curation/blob/main/docs/docs/getting-started.md) - 安装和使用
-- [完整工作流程](https://github.com/luxiangze/Spider_Spidroin_Curation/blob/main/docs/docs/workflow.md) - 详细流程
-- [技术细节](https://github.com/luxiangze/Spider_Spidroin_Curation/blob/main/docs/docs/technical-details.md) - 算法和参数
-- [数据格式](https://github.com/luxiangze/Spider_Spidroin_Curation/blob/main/docs/docs/data-formats.md) - 文件格式
+### RNA-seq 分析
+- ✅ 多基因组 STAR 比对流程
+- ✅ FastQC + fastp 质控
+- ✅ BigWig 可视化文件生成
+- ✅ MultiQC 汇总报告
 
 ## 项目结构
 
 ```
 spider_silkome/
-├── data/                       # 数据目录
-│   ├── external/               # Spidroin 蛋白序列数据库
-│   ├── raw/                    # 蜘蛛基因组序列
+├── data/
+│   ├── raw/                    # 原始数据
+│   │   ├── spider_genome/      # 蜘蛛基因组 (fa + gff)
+│   │   └── BGI_RNA_10samples/  # RNA-seq 测序数据
 │   ├── interim/                # 中间处理结果
-│   └── processed/              # 最终输出（GFF/CSV）
+│   └── processed/              # 最终输出
 │
-├── spider_silkome_module/      # 源代码
-│   ├── miniprot_mapping.py     # 主流程脚本
-│   ├── processing.py           # 数据处理
-│   └── export.py               # 结果导出
+├── workflow/
+│   └── BGI_RNA_align/          # Snakemake RNA 比对流程
+│       ├── Snakefile
+│       ├── config/
+│       └── rules/
 │
-├── docs/docs/                  # 详细文档
-├── notebooks/                  # Jupyter notebooks
-└── Makefile                    # 命令入口
+├── spider_silkome_module/      # Python 模块
+│   ├── config.py               # 路径配置
+│   ├── features.py             # 工具函数
+│   └── plots.py                # 可视化
+│
+├── notebooks/
+│   └── Automated_spidroin_annotation.ipynb  # Spidroin 注释主流程
+├── scripts/
+│   └── analyse_spidroins.py    # Spidroin 分析脚本
+└── Makefile
 ```
 
-## 许可证与引用
+## 依赖管理
+
+项目使用 [pixi](https://pixi.sh/) 管理依赖，主要工具包括：
+
+- **Spidroin 注释**: nhmmer (HMMER), Augustus, BioPython
+- **RNA-seq 比对**: STAR, samtools
+- **质控**: FastQC, fastp, MultiQC
+- **可视化**: deeptools (bamCoverage)
+- **流程**: Snakemake, Jupyter
+
+## 许可证
 
 - **许可证**: 详见 [LICENSE](LICENSE) 文件
 - **维护者**: 郭永康
 - **模板**: 基于 [Cookiecutter Data Science](https://cookiecutter-data-science.drivendata.org/)
-
-如需引用本项目，请使用：
-```
-Spider Spidroin Curation (SpiderSc)
-https://github.com/luxiangze/Spider_Spidroin_Curation
-```
 
