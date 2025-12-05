@@ -530,6 +530,67 @@ def plot_spidroin_length(
     plt.clf()
 
 
+def write_gff_files(spidroin_data: pd.DataFrame, output_folder: str) -> None:
+    """
+    Write GFF files for spidroin annotations, one file per species.
+
+    Args:
+        spidroin_data: DataFrame with joined spidroin data
+        output_folder: Output directory for GFF files
+    """
+    gff_dir = os.path.join(output_folder, "GFF")
+    os.makedirs(gff_dir, exist_ok=True)
+
+    for species in spidroin_data["Species"].unique():
+        species_data = spidroin_data[spidroin_data["Species"] == species]
+        gff_file = os.path.join(gff_dir, f"{species}.gff")
+
+        type_counters = {}
+        with open(gff_file, "w") as f:
+            f.write("##gff-version 3\n")
+
+            for _, entry in species_data.iterrows():
+                scaffold = entry["Scaffold"]
+                strand = entry["Strand"]
+                spidroin_type = entry["spidroin_type"]
+
+                # Track type counter for unique gene IDs
+                if spidroin_type not in type_counters:
+                    type_counters[spidroin_type] = 1
+                else:
+                    type_counters[spidroin_type] += 1
+
+                gene_id = f"{species}_{spidroin_type}_{type_counters[spidroin_type]}"
+
+                # Gene boundaries
+                gene_start = int(min(entry["NTD_from"], entry["NTD_to"],
+                                     entry["CTD_from"], entry["CTD_to"]))
+                gene_end = int(max(entry["NTD_from"], entry["NTD_to"],
+                                   entry["CTD_from"], entry["CTD_to"]))
+
+                # NTD boundaries
+                ntd_start = int(min(entry["NTD_from"], entry["NTD_to"]))
+                ntd_end = int(max(entry["NTD_from"], entry["NTD_to"]))
+
+                # CTD boundaries
+                ctd_start = int(min(entry["CTD_from"], entry["CTD_to"]))
+                ctd_end = int(max(entry["CTD_from"], entry["CTD_to"]))
+
+                # Write gene feature
+                attrs = f"ID={gene_id};Name={spidroin_type};spidroin_type={spidroin_type}"
+                f.write(f"{scaffold}\tspidroin_analysis\tgene\t{gene_start}\t{gene_end}\t.\t{strand}\t.\t{attrs}\n")
+
+                # Write NTD feature
+                ntd_attrs = f"ID={gene_id}_NTD;Parent={gene_id};Name=NTD"
+                f.write(f"{scaffold}\tspidroin_analysis\tCDS\t{ntd_start}\t{ntd_end}\t.\t{strand}\t.\t{ntd_attrs}\n")
+
+                # Write CTD feature
+                ctd_attrs = f"ID={gene_id}_CTD;Parent={gene_id};Name=CTD"
+                f.write(f"{scaffold}\tspidroin_analysis\tCDS\t{ctd_start}\t{ctd_end}\t.\t{strand}\t.\t{ctd_attrs}\n")
+
+        print(f"Wrote GFF file: {gff_file}")
+
+
 def extract_spidroin_sequences(
     spidroin_data: pd.DataFrame,
     genome_fasta: str,
@@ -550,7 +611,7 @@ def extract_spidroin_sequences(
         nostart_file: File to log sequences without start codons
 
     Returns:
-        Tuple of (ntd_sequences, ctd_sequences, spidroin_sequences)
+        Tuple of (ntd_sequences, ctd_sequences, ntd_proteins, ctd_proteins, spidroin_sequences)
     """
     print(f"Assembly: {genome_fasta}")
     os.makedirs(output_folder, exist_ok=True)
@@ -559,6 +620,8 @@ def extract_spidroin_sequences(
 
     ntd_sequences = []
     ctd_sequences = []
+    ntd_proteins = []
+    ctd_proteins = []
     spidroin_sequences = []
     type_counters = {}
 
@@ -625,16 +688,6 @@ def extract_spidroin_sequences(
                 spidroin_from - start_offset:spidroin_to + stop_offset
             ].upper()
 
-            ntd_sequences.append(SeqRecord(
-                ntd_sequence,
-                id=f"{species}_{spidroin_type}_NTD_{type_counters[spidroin_type]}",
-                description=f"{scaffold}_{strand}_{ntd_from}_{ntd_to}"
-            ))
-            ctd_sequences.append(SeqRecord(
-                ctd_sequence,
-                id=f"{species}_{spidroin_type}_CTD_{type_counters[spidroin_type]}",
-                description=f"{scaffold}_{strand}_{ctd_from}_{ctd_to}"
-            ))
         else:
             if ctd_from < start_extension:
                 start_extension = ctd_from
@@ -673,24 +726,54 @@ def extract_spidroin_sequences(
                 spidroin_from - stop_offset:spidroin_to + start_offset
             ].reverse_complement().upper()
 
+        seq_id_suffix = f"{species}_{spidroin_type}_{type_counters[spidroin_type]}"
+
         ntd_sequences.append(SeqRecord(
             ntd_sequence,
-            id=f"{species}_{spidroin_type}_NTD_{type_counters[spidroin_type]}",
+            id=f"{seq_id_suffix}_NTD",
             description=f"{scaffold}_{strand}_{ntd_from}_{ntd_to}"
         ))
         ctd_sequences.append(SeqRecord(
             ctd_sequence,
-            id=f"{species}_{spidroin_type}_CTD_{type_counters[spidroin_type]}",
+            id=f"{seq_id_suffix}_CTD",
             description=f"{scaffold}_{strand}_{ctd_from}_{ctd_to}"
         ))
 
+        # Translate to protein sequences
+        # NTD: trim from end to make length multiple of 3 (keep start codon)
+        # CTD: trim from start to make length multiple of 3 (keep stop codon)
+        # Note: use to_stop=False to translate full region (internal stops shown as *)
+        try:
+            ntd_trim_len = len(ntd_sequence) - (len(ntd_sequence) % 3)
+            ntd_for_translate = ntd_sequence[:ntd_trim_len]
+            ntd_protein = ntd_for_translate.translate(to_stop=False)
+            ntd_proteins.append(SeqRecord(
+                ntd_protein,
+                id=f"{seq_id_suffix}_NTD",
+                description=f"{scaffold}_{strand}_{ntd_from}_{ntd_to}"
+            ))
+        except Exception as e:
+            print(f"Warning: Failed to translate NTD for {seq_id_suffix}: {e}")
+
+        try:
+            ctd_remainder = len(ctd_sequence) % 3
+            ctd_for_translate = ctd_sequence[ctd_remainder:] if ctd_remainder else ctd_sequence
+            ctd_protein = ctd_for_translate.translate(to_stop=False)
+            ctd_proteins.append(SeqRecord(
+                ctd_protein,
+                id=f"{seq_id_suffix}_CTD",
+                description=f"{scaffold}_{strand}_{ctd_from}_{ctd_to}"
+            ))
+        except Exception as e:
+            print(f"Warning: Failed to translate CTD for {seq_id_suffix}: {e}")
+
         spidroin_sequences.append(SeqRecord(
             spidroin_sequence,
-            id=f"{species}_{spidroin_type}_{type_counters[spidroin_type]}",
+            id=seq_id_suffix,
             description=f"{scaffold}_{strand}_{spidroin_from}_{spidroin_to}"
         ))
 
-    return ntd_sequences, ctd_sequences, spidroin_sequences
+    return ntd_sequences, ctd_sequences, ntd_proteins, ctd_proteins, spidroin_sequences
 
 
 def parse_arguments():
@@ -970,11 +1053,18 @@ def main():
             plot_spidroin_length(full_spidroin_genes, outdir, spidroin_plotting_order)
             plot_spidroins_heatmap(full_spidroin_genes, outdir + "joined", spidroin_plotting_order, all_species)
 
+    # Generate GFF files
+    if len(full_spidroin_genes) > 0:
+        print("Generating GFF files...")
+        write_gff_files(full_spidroin_genes, outdir)
+
     # Extract spidroin sequences
     if not args.skip_sequence_extraction and len(full_spidroin_genes) > 0:
         print("Extracting spidroin sequences...")
         ntd_seqs = []
         ctd_seqs = []
+        ntd_prots = []
+        ctd_prots = []
         spid_seqs = []
 
         if single_species_mode:
@@ -985,11 +1075,13 @@ def main():
                 full_spidroin_genes["Species"] == species
             ]
             if len(species_spidroins) > 0:
-                spec_ntd_seqs, spec_ctd_seqs, spec_spid_seqs = extract_spidroin_sequences(
+                spec_ntd_seqs, spec_ctd_seqs, spec_ntd_prots, spec_ctd_prots, spec_spid_seqs = extract_spidroin_sequences(
                     species_spidroins, args.assembly_file, species, outdir
                 )
                 ntd_seqs.extend(spec_ntd_seqs)
                 ctd_seqs.extend(spec_ctd_seqs)
+                ntd_prots.extend(spec_ntd_prots)
+                ctd_prots.extend(spec_ctd_prots)
                 spid_seqs.extend(spec_spid_seqs)
             else:
                 print(f"Warning: No joined spidroin genes found for {species}")
@@ -1015,17 +1107,24 @@ def main():
                     continue
 
                 assembly_file = assembly_files[0]
-                spec_ntd_seqs, spec_ctd_seqs, spec_spid_seqs = extract_spidroin_sequences(
+                spec_ntd_seqs, spec_ctd_seqs, spec_ntd_prots, spec_ctd_prots, spec_spid_seqs = extract_spidroin_sequences(
                     species_spidroins, assembly_file, species, outdir
                 )
 
                 ntd_seqs.extend(spec_ntd_seqs)
                 ctd_seqs.extend(spec_ctd_seqs)
+                ntd_prots.extend(spec_ntd_prots)
+                ctd_prots.extend(spec_ctd_prots)
                 spid_seqs.extend(spec_spid_seqs)
 
+        # Write nucleotide sequences
         SeqIO.write(ntd_seqs, f"{outdir}/ntd_sequences.fasta", "fasta")
         SeqIO.write(ctd_seqs, f"{outdir}/ctd_sequences.fasta", "fasta")
         SeqIO.write(spid_seqs, f"{outdir}/spidroin_sequences.fasta", "fasta")
+
+        # Write protein sequences
+        SeqIO.write(ntd_prots, f"{outdir}/ntd_proteins.fasta", "fasta")
+        SeqIO.write(ctd_prots, f"{outdir}/ctd_proteins.fasta", "fasta")
 
     print("Analysis complete!")
 
