@@ -1,84 +1,97 @@
-# Spider Silkome
+# Spider Spidroin Curation
 
 <a target="_blank" href="https://cookiecutter-data-science.drivendata.org/">
     <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter" />
 </a>
 
-蜘蛛丝蛋白（Spidroin）自动化注释与表达分析流程。
+**[中文版](README_CN.md)**
 
-## 快速开始
+Automated annotation and expression analysis pipeline for spider silk proteins (Spidroins).
+
+## Quick Start
 
 ```bash
-# 安装依赖
+# Install dependencies
 pixi install
 
-# 激活环境
+# Activate environment
 pixi shell
 
-# 运行 Spidroin 注释流程（Jupyter Notebook）
+# Run Spidroin annotation workflow (Jupyter Notebook, configure parameters first)
 jupyter lab notebooks/Automated_spidroin_annotation.ipynb
 
-# 运行 RNA-seq 比对流程
+# Run BGI short-read RNA-seq alignment
 cd workflow/BGI_RNA_align
+pixi run snakemake --cores 80 --resources mem_gb=240
+
+# Run ONT long-read transcriptome assembly (requires BGI workflow to complete first)
+cd workflow/ONT_RNA_align
 pixi run snakemake --cores 80 --resources mem_gb=240
 ```
 
-## 主要功能
+## Features
 
-### Spidroin 自动化注释
-- ✅ nhmmer 搜索 Spidroin N/C 端序列
-- ✅ 多物种批量分析（10 个蜘蛛基因组）
-- ✅ Augustus 基因结构预测
-- ✅ 蛋白序列提取
+### Spidroin Automated Annotation
+- ✅ nhmmer search for Spidroin N/C terminal sequences
+- ✅ Multi-species batch analysis (10 spider genomes)
+- ✅ Augustus gene structure prediction
+- ✅ Protein sequence extraction
 
-### RNA-seq 分析
-- ✅ 多基因组 STAR 比对流程
-- ✅ FastQC + fastp 质控
-- ✅ BigWig 可视化文件生成
-- ✅ MultiQC 汇总报告
+### RNA-seq Analysis
+- ✅ BGI short-read STAR alignment (`workflow/BGI_RNA_align`)
+- ✅ ONT long-read FLAIR transcriptome assembly (`workflow/ONT_RNA_align`)
+- ✅ FastQC + fastp quality control
+- ✅ BigWig visualization files
+- ✅ MultiQC summary reports
 
-## 项目结构
+## Project Structure
 
 ```
 spider_silkome/
 ├── data/
-│   ├── raw/                    # 原始数据
-│   │   ├── spider_genome/      # 蜘蛛基因组 (fa + gff)
-│   │   └── BGI_RNA_10samples/  # RNA-seq 测序数据
-│   ├── interim/                # 中间处理结果
-│   └── processed/              # 最终输出
+│   ├── raw/                       # Raw data
+│   │   ├── spider_genome/         # Spider genomes (fa + gff)
+│   │   ├── BGI_RNA_10samples/     # BGI short-read RNA-seq
+│   │   └── ONT_DRS_10samples/     # ONT long-read RNA-seq
+│   ├── interim/                   # Intermediate results
+│   └── processed/                 # Final outputs
 │
 ├── workflow/
-│   └── BGI_RNA_align/          # Snakemake RNA 比对流程
+│   ├── BGI_RNA_align/             # BGI short-read STAR alignment
+│   │   ├── Snakefile
+│   │   ├── config/
+│   │   └── rules/
+│   └── ONT_RNA_align/             # ONT long-read FLAIR assembly
 │       ├── Snakefile
 │       ├── config/
 │       └── rules/
 │
-├── spider_silkome_module/      # Python 模块
-│   ├── config.py               # 路径配置
-│   ├── features.py             # 工具函数
-│   └── plots.py                # 可视化
+├── spider_silkome_module/         # Python module
+│   ├── config.py                  # Path configuration
+│   ├── features.py                # Utility functions
+│   └── plots.py                   # Visualization
 │
 ├── notebooks/
-│   └── Automated_spidroin_annotation.ipynb  # Spidroin 注释主流程
+│   └── Automated_spidroin_annotation.ipynb  # Spidroin annotation workflow
 ├── scripts/
-│   └── analyse_spidroins.py    # Spidroin 分析脚本
+│   └── analyse_spidroins.py       # Spidroin analysis script
 └── Makefile
 ```
 
-## 依赖管理
+## Dependencies
 
-项目使用 [pixi](https://pixi.sh/) 管理依赖，主要工具包括：
+This project uses [pixi](https://pixi.sh/) for dependency management. Key tools include:
 
-- **Spidroin 注释**: nhmmer (HMMER), Augustus, BioPython
-- **RNA-seq 比对**: STAR, samtools
-- **质控**: FastQC, fastp, MultiQC
-- **可视化**: deeptools (bamCoverage)
-- **流程**: Snakemake, Jupyter
+- **Spidroin annotation**: nhmmer (HMMER), Augustus, BioPython
+- **Short-read alignment**: STAR, samtools
+- **Long-read alignment**: minimap2, FLAIR
+- **Quality control**: FastQC, fastp, MultiQC
+- **Visualization**: deeptools (bamCoverage)
+- **Workflow**: Snakemake, Jupyter
 
-## 许可证
+## License
 
-- **许可证**: 详见 [LICENSE](LICENSE) 文件
-- **维护者**: 郭永康
-- **模板**: 基于 [Cookiecutter Data Science](https://cookiecutter-data-science.drivendata.org/)
+- **License**: See [LICENSE](LICENSE) file
+- **Maintainer**: Yongkang Guo
+- **Template**: Based on [Cookiecutter Data Science](https://cookiecutter-data-science.drivendata.org/)
 
