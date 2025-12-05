@@ -1,0 +1,121 @@
+"""
+ONT RNA-seq Alignment Workflow using FLAIR
+==========================================
+
+This workflow processes Oxford Nanopore long-read RNA-seq data using FLAIR.
+
+Pipeline Steps:
+1. minimap2      - Align ONT reads to genome
+2. flair transcriptome - Build transcriptome (correct + collapse combined)
+   - Uses short-read junction support from BGI STAR alignment
+   - Uses --stringent mode for spidroin analysis
+
+Usage:
+    # Dry run
+    snakemake -n
+
+    # Run full pipeline (requires BGI RNA-seq to finish first for junction support)
+    snakemake --cores 80 --resources mem_gb=240
+
+    # Run only alignment
+    snakemake all_aligned --cores 80 --resources mem_gb=240
+
+    # Generate workflow DAG
+    snakemake --dag | dot -Tpng > dag.png
+
+Note for Spidroin analysis:
+    - Always verify collapsed isoforms against raw reads in Geneious
+    - The repetitive exons may be underestimated by FLAIR
+    - Import both isoforms.gtf and sorted.bam for manual inspection
+"""
+
+import os
+from pathlib import Path
+
+
+# Load configuration
+configfile: "config/config.yaml"
+
+
+# Include rule modules
+include: "rules/common.smk"
+include: "rules/flair.smk"
+include: "rules/bigwig.smk"
+include: "rules/stats.smk"
+
+
+# Get samples list from config
+SAMPLES = get_samples()
+
+
+# Default target rule - full pipeline
+rule all:
+    """Main target: run complete FLAIR pipeline for all samples."""
+    input:
+        # Isoform files (in results)
+        expand(
+            os.path.join(config["results_dir"], "isoforms", "{sample}.isoforms.gtf"),
+            sample=SAMPLES,
+        ),
+        expand(
+            os.path.join(config["results_dir"], "isoforms", "{sample}.isoforms.fa"),
+            sample=SAMPLES,
+        ),
+        # Sorted BAM files (in results)
+        expand(
+            os.path.join(config["results_dir"], "bam", "{sample}.sorted.bam"),
+            sample=SAMPLES,
+        ),
+        # BigWig files (in results)
+        expand(
+            os.path.join(config["results_dir"], "bigwig", "{sample}.bw"),
+            sample=SAMPLES,
+        ),
+        # MultiQC report (in results)
+        os.path.join(config["results_dir"], "multiqc", "multiqc_report.html"),
+
+
+rule all_aligned:
+    """Run only alignment step for all samples."""
+    input:
+        expand(
+            os.path.join(config["work_dir"], "aligned", "{sample}.bam"),
+            sample=SAMPLES,
+        ),
+
+
+rule all_transcriptome:
+    """Run full FLAIR pipeline up to transcriptome step."""
+    input:
+        expand(
+            os.path.join(config["work_dir"], "transcriptome", "{sample}.isoforms.gtf"),
+            sample=SAMPLES,
+        ),
+
+
+rule process_sample:
+    """Process a specific sample completely."""
+    input:
+        gtf=os.path.join(config["results_dir"], "isoforms", "{sample}.isoforms.gtf"),
+        bw=os.path.join(config["results_dir"], "bigwig", "{sample}.bw"),
+        stats=os.path.join(config["results_dir"], "stats", "{sample}.flagstat.txt"),
+    output:
+        touch(os.path.join(config["results_dir"], ".done.{sample}")),
+
+
+rule clean:
+    """Remove all generated files (work and results directories)."""
+    shell:
+        """
+        rm -rf {config[work_dir]} {config[results_dir]}
+        echo "Cleaned work and results directories."
+        """
+
+
+rule clean_work:
+    """Remove only work directory (keep results)."""
+    shell:
+        """
+        rm -rf {config[work_dir]}
+        echo "Cleaned work directory."
+        """

@@ -1,0 +1,60 @@
+# Configuration for ONT RNA alignment workflow using FLAIR
+
+# Project paths (absolute paths)
+genome_dir: "/home/gyk/project/spider_silkome/data/raw/spider_genome"
+fastq_dir: "/home/gyk/project/spider_silkome/data/raw/ONT_DRS_10samples"
+work_dir: "work"
+results_dir: "results"
+
+# Short-read junction support from BGI RNA-seq (optional but recommended)
+# STAR SJ.out.tab files provide orthogonal splice junction support
+bgi_star_dir: "/home/gyk/project/spider_silkome/workflow/BGI_RNA_align/work/aligned"
+use_short_read_junctions: true  # Use BGI RNA-seq junction data
+
+# Sample to genome mapping
+# Each sample folder contains pass.fq.gz
+samples:
+  Araneus_ventricosus:
+    genome: "Araneus_ventricosus"
+  Evarcha_sp:
+    genome: "Evarcha_sp"
+  Heteropoda_venatoria:
+    genome: "Heteropoda_venatoria"
+  Hippasa_lycosina:
+    genome: "Hippasa_lycosina"
+  Pandercetes_sp:
+    genome: "Pandercetes_sp"
+  Pardosa_pseudoannulata:
+    genome: "Pardosa_pseudoannulata"
+  Pholcus_sp:
+    genome: "Pholcus_sp"
+  Scorpiops_zhui:
+    genome: "Scorpiops_zhui"
+  Songthela_sp:
+    genome: "Songthela_sp"
+  Trichonephila_clavata:
+    genome: "Trichonephila_clavata"
+
+# Minimap2 alignment parameters
+minimap2:
+  threads: 16
+  mem_gb: 50
+  # -ax splice: spliced alignment for RNA
+  # -uf: force splice junctions on same strand as read (for stranded library)
+  extra: "-uf"
+
+# FLAIR transcriptome parameters (combines correct + collapse)
+flair_transcriptome:
+  threads: 16
+  mem_gb: 100
+  # Minimum reads supporting a transcript
+  min_support: 3
+  # Use stringent mode for spidroin analysis
+  # Requires reads to cover 80% and include first/last exons
+  stringent: true
+
+# BigWig parameters
+bigwig:
+  threads: 8
+  bin_size: 10
+  normalize_using: "CPM"
