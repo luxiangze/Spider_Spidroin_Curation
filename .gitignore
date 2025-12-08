@@ -195,10 +195,8 @@ cython_debug/
 .history
 
 # workflow
-references/
-workflow/BGI_RNA_align/work
-workflow/BGI_RNA_align/.snakemake
-workflow/BGI_RNA_align/results
-workflow/ONT_RNA_align/work
-workflow/ONT_RNA_align/.snakemake
-workflow/ONT_RNA_align/results
+workflow/**
+!workflow/**/*.smk
+!workflow/**/*.md
+!workflow/**/Snakefile
+references/**
