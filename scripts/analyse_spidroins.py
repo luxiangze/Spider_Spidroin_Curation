@@ -628,7 +628,7 @@ def extract_spidroin_sequences(
     for _, entry in spidroin_data.iterrows():
         start_extension = 45
         stop_extension = 45
-        scaffold = entry["Scaffold"]
+        scaffold = str(entry["Scaffold"])
         strand = entry["Strand"]
         scaff_seq = genome_sequences[scaffold]
         scaff_len = len(scaff_seq)
