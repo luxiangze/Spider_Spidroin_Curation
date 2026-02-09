@@ -451,15 +451,15 @@ def main():
         elif domain_type == 'NTD':
             all_ntd.extend(records_list)
 
-    # Write Pan files (all CTD and all NTD combined)
-    if all_ctd:
-        pan_ctd_file = output_dir / "PanSpidroin_CTD.faa"
-        SeqIO.write(all_ctd, pan_ctd_file, 'fasta')
-        print(f"  PanSpidroin_CTD: {len(all_ctd)} sequences -> {pan_ctd_file}", file=sys.stderr)
-    if all_ntd:
-        pan_ntd_file = output_dir / "PanSpidroin_NTD.faa"
-        SeqIO.write(all_ntd, pan_ntd_file, 'fasta')
-        print(f"  PanSpidroin_NTD: {len(all_ntd)} sequences -> {pan_ntd_file}", file=sys.stderr)
+    # # Write Pan files (all CTD and all NTD combined)
+    # if all_ctd:
+    #     pan_ctd_file = output_dir / "PanSpidroin_CTD.faa"
+    #     SeqIO.write(all_ctd, pan_ctd_file, 'fasta')
+    #     print(f"  PanSpidroin_CTD: {len(all_ctd)} sequences -> {pan_ctd_file}", file=sys.stderr)
+    # if all_ntd:
+    #     pan_ntd_file = output_dir / "PanSpidroin_NTD.faa"
+    #     SeqIO.write(all_ntd, pan_ntd_file, 'fasta')
+    #     print(f"  PanSpidroin_NTD: {len(all_ntd)} sequences -> {pan_ntd_file}", file=sys.stderr)
 
     # Write processing report
     report_path = output_dir / "processing_report.tsv"
