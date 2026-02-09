@@ -15,7 +15,7 @@ from spider_silkome_module.config import (
 
 
 # Import feature functions
-from spider_silkome_module.features import run_shell_command_with_check
+from spider_silkome_module.utils import run_cmd
 
 # Public API
 __all__ = [
@@ -32,5 +32,5 @@ __all__ = [
     "SCRIPTS_DIR",
     "REFERENCES_DIR",
     # Feature functions
-    "run_shell_command_with_check"
+    "run_cmd"
 ]
