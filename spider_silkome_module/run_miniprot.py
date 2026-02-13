@@ -21,21 +21,9 @@ def find_mpi_files(input_path: Path) -> list[tuple[str, Path]]:
         species_name = input_path.stem
         mpi_files.append((species_name, input_path))
     elif input_path.is_dir():
-        for subdir in input_path.iterdir():
-            if subdir.is_dir():
-                # Extract species name from folder (remove prefix like "119.")
-                folder_name = subdir.name
-                if "." in folder_name:
-                    species_name = folder_name.split(".", 1)[1]
-                else:
-                    species_name = folder_name
-
-                # Find .mpi file in subdir
-                mpi_list = list(subdir.glob("*.mpi"))
-                if mpi_list:
-                    mpi_files.append((species_name, mpi_list[0]))
-                else:
-                    logger.warning(f"No .mpi file found in {subdir}")
+        for mpi in sorted(input_path.glob("*.mpi")):
+            species_name = mpi.stem
+            mpi_files.append((species_name, mpi))
 
     return mpi_files
 
@@ -60,7 +48,7 @@ def run_miniprot(
 
 @app.command()
 def main(
-    input_path: Path = RAW_DATA_DIR / "spider_genome",
+    mpi_input_path: Path = RAW_DATA_DIR / "spider_genome",
     protein_fasta: Path = INTERIM_DATA_DIR / "miniprot_mapping_20260127" / "cdhit" / "cdhit_shortest_seq.fa",
     output_path: Path = INTERIM_DATA_DIR / "miniprot_mapping_20260127" / "miniprot",
     threads: int = 70,
@@ -70,15 +58,15 @@ def main(
     """
     Run miniprot alignment for one or multiple genomes.
 
-    If input_path is a directory, it will process all subdirectories containing .mpi files.
-    If input_path is a single .mpi file, it will process only that file.
+    If mpi_input_path is a directory, it will process all subdirectories containing .mpi files.
+    If mpi_input_path is a single .mpi file, it will process only that file.
     """
-    logger.info(f"Input path: {input_path}")
+    logger.info(f"MPI input path: {mpi_input_path}")
     logger.info(f"Protein FASTA: {protein_fasta}")
 
-    mpi_files = find_mpi_files(input_path)
+    mpi_files = find_mpi_files(mpi_input_path)
     if not mpi_files:
-        logger.error(f"No .mpi files found in {input_path}")
+        logger.error(f"No .mpi files found in {mpi_input_path}")
         raise typer.Exit(1)
 
     logger.info(f"Found {len(mpi_files)} genome(s) to process")
@@ -87,13 +75,7 @@ def main(
 
     for species_name, mpi_path in tqdm(mpi_files, desc="Processing genomes"):
         logger.info(f"Processing {species_name}: {mpi_path}")
-
-        if input_path.is_dir():
-            species_output_dir = output_path / species_name
-            species_output_dir.mkdir(parents=True, exist_ok=True)
-            output_gff = species_output_dir / f"{species_name}.gff"
-        else:
-            output_gff = output_path / f"{species_name}.gff"
+        output_gff = output_path / f"{species_name}.gff"
 
         run_miniprot(mpi_path, protein_fasta, output_gff, threads, outc, force)
         logger.info(f"Output: {output_gff}")
