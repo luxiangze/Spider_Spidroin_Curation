@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c ':*)",
+      "Bash(wc -l /home/gyk/project/spider_silkome/data/processed/typing_results/*/*.tsv)",
+      "Bash(ls -d /home/gyk/project/spider_silkome/data/processed/typing_results/*/)",
+      "Bash(cat /home/gyk/project/spider_silkome/data/processed/typing_results/*/*.tsv)",
+      "Read(//home/gyk/project/spider_silkome/**)",
+      "Bash(wc -l /home/gyk/project/spider_silkome/data/processed/typing_results/*/*.fasta)",
+      "Bash(cat *//*.tsv)",
+      "Read(//home/gyk/project/spider_silkome/data/processed/typing_results/**)",
+      "Bash(ls -d */)",
+      "Bash(xargs ls:*)",
+      "Bash(ls /home/gyk/project/spider_silkome/data/processed/001_results_people*)",
+      "Bash(wc -l /home/gyk/project/spider_silkome/tests/test_species_001/output/*.tsv)",
+      "WebFetch(domain:docs.langchain.com)",
+      "WebFetch(domain:python.langchain.com)",
+      "Bash(pixi install:*)",
+      "WebFetch(domain:help.aliyun.com)",
+      "Bash(python agents/typing_agent.py --help)",
+      "Bash(python agents/typing_agent.py main --help)"
+    ],
+    "additionalDirectories": [
+      "/home/gyk/project/spider_silkome/agents"
+    ]
+  }
+}
