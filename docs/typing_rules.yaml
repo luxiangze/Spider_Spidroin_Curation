@@ -1,0 +1,69 @@
+# Spidroin typing rules configuration
+# Edit this file to update classification thresholds and type mappings without changing agent code.
+# E-value interpretation: lower values indicate higher similarity.
+
+thresholds:
+  nhmmer:
+    e_value: 1.0e-4        # primary filter: only keep hits with e_value < this
+    e_value_high: 1.0e-10  # high-confidence tier: hits with e_value < this are "high confidence"
+    score_gt_bias: true    # secondary filter: require score > bias
+  miniprot:
+    positive_high: 0.6     # >= 0.6 → high confidence
+    positive_medium: 0.4   # >= 0.4 → medium confidence; below this → low / needs_review
+  min_span_bp: 1000         # min locus span (bp); pairs shorter than this are split into single-terminal candidates
+  max_span_bp: 150000      # max distance (bp) between NTD and CTD midpoints to be considered the same locus
+
+# Mapping from profile type prefix to standardized spidroin type name.
+# Profile name format: {TypePrefix}_{Domain}  (e.g., MaSp3_NTD → TypePrefix=MaSp3, Domain=NTD)
+# Order matters for prefix matching: more specific entries must come before less specific ones.
+type_mapping:
+  MaSp1:   MaSp1
+  MaSp2B:  MaSp2B
+  MaSp2:   MaSp2
+  MaSp3B:  MaSp3B
+  MaSp3:   MaSp3
+  MaSp:    MaSp       # generic MaSp; may be MaSp1/2/3 — see type_specificity below
+  MiSp:    MiSp
+  PySp:    PySp
+  AgSp1:   AgSp1
+  AgSp2:   AgSp2
+  AgSp:    AgSp
+  Flag:    Flag
+  Pflag:   Pflag
+  TuSp:    TuSp
+  AcSp:    AcSp
+  CySp:    CySp
+  CrSp:    CrSp
+  Spidroin: unknown   # generic fallback profile; always flagged needs_review
+  hypo:    unknown    # hypothetical spidroin; always flagged needs_review
+
+# Type specificity pairs [specific, general].
+# If NTD and CTD map to different types but one is more specific than the other,
+# the more specific type is preferred (no conflict flagged).
+type_specificity:
+  - [MaSp1,  MaSp]
+  - [MaSp2,  MaSp]
+  - [MaSp2B, MaSp2]
+  - [MaSp3,  MaSp]
+  - [MaSp3B, MaSp3]
+  - [AgSp1,  AgSp]
+  - [AgSp2,  AgSp]
+
+# Type families: when NTD and CTD map to different subtypes within the same family,
+# the conflict is resolved by falling back to the family name (needs_review=True).
+# List the canonical family name as key; members include the family name itself.
+type_families:
+  MaSp: [MaSp, MaSp1, MaSp2, MaSp2B, MaSp3, MaSp3B]
+  AgSp: [AgSp, AgSp1, AgSp2]
+
+# Completeness rules (informational; logic is in typing_agent.py).
+# Full_length:   NTD and CTD both present with high confidence, span ≤ max_span_bp
+# N-terminal:    Only NTD present (or CTD absent / low confidence)
+# C-terminal:    Only CTD present (or NTD absent / low confidence)
+# Repeat_only:   No terminal domains detected but miniprot alignment present
+# TODO: add repeat-region detection to distinguish Repeat_only from undetected terminals
+completeness_notes:
+  Full_length: "NTD + CTD, both high confidence, within max_span_bp"
+  N-terminal:  "NTD only (high confidence)"
+  C-terminal:  "CTD only (high confidence)"
+  Repeat_only: "No high-confidence terminal domains; miniprot hit present"

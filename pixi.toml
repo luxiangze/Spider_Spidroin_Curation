@@ -48,11 +48,17 @@ polars = ">=1.36.1,<2"
 pyarrow = ">=21.0.0,<23"
 genblasta = ">=1.0.4,<2"
 salmon = ">=1.10.3,<2"
+langchain = ">=1.2.14,<2"
+langchain-openai = ">=1.1.12,<2"
 
 [pypi-dependencies]
 mkdocs = "*"
 python-dotenv = "*"
 spider_silkome_module = { path = ".", editable = true }
+langgraph = ">=0.2"
+langchain-anthropic = ">=0.3"
+langchain-community = ">=0.3"
+dashscope = ">=1.20"
 
 [feature.agat.dependencies]
 agat = "*"
