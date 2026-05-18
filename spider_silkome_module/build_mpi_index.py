@@ -20,21 +20,41 @@ def extract_species_name(folder_name: str) -> str:
     return folder_name
 
 
+GENOME_PATTERNS = ("*.fa", "*.fna", "*.fasta", "*.fa.gz", "*.fna.gz", "*.fasta.gz")
+NON_GENOME_KEYWORDS = ("pep", "prot", "mito", "cds", "transcript")
+
+
 def find_genome_files(input_path: Path) -> list[tuple[str, Path]]:
     """
-    Find all genome FASTA files in subdirectories of input_path.
-    Returns a list of (species_name, genome_fasta_path) tuples.
+    Find genome FASTA files in subdirectories of input_path.
+
+    Supports both plain (.fa/.fna/.fasta) and gzip-compressed (.fa.gz/...) inputs.
+    Files whose name suggests non-genome content (pep/mito/cds/...) are excluded.
+    When multiple candidates remain, files containing 'genome' in the name are preferred.
+
+    Returns a list of (subdir_name, genome_fasta_path) tuples.
     """
-    genome_files = []
+    genome_files: list[tuple[str, Path]] = []
     for subdir in sorted(input_path.iterdir()):
         if not subdir.is_dir():
             continue
 
-        fasta_list = list(subdir.glob("*.fa")) + list(subdir.glob("*.fna"))
-        if fasta_list:
-            genome_files.append((subdir.name, fasta_list[0]))
-        else:
+        candidates: list[Path] = []
+        for pattern in GENOME_PATTERNS:
+            candidates.extend(subdir.glob(pattern))
+
+        candidates = [
+            f for f in candidates
+            if not any(kw in f.name.lower() for kw in NON_GENOME_KEYWORDS)
+        ]
+        if not candidates:
             logger.warning(f"No genome FASTA found in {subdir}")
+            continue
+
+        preferred = [f for f in candidates if "genome" in f.name.lower()]
+        chosen = sorted(preferred or candidates)[0]
+        logger.debug(f"Selected genome for {subdir.name}: {chosen.name}")
+        genome_files.append((subdir.name, chosen))
 
     return genome_files
 
