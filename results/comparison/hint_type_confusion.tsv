@@ -1,0 +1,9 @@
+manual	agent	count
+C-terminal	C-terminal	56
+C-terminal	Full_length	1
+Full_length	Full_length	1166
+Full_length	C-terminal	8
+Full_length	N-terminal	4
+N-terminal	N-terminal	69
+N-terminal	Full_length	4
+N-terminal	C-terminal	1
