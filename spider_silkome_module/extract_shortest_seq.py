@@ -1,5 +1,5 @@
-import re
 from pathlib import Path
+import re
 
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
@@ -27,7 +27,7 @@ def parse_clstr_file(clstr_path: Path) -> dict[int, list[tuple[int, str]]]:
                 clusters[current_cluster] = []
             else:
                 # Parse line like: 0	1854aa, >5826_MaSp2_CTD... *
-                match = re.match(r"\d+\s+(\d+)aa,\s+>([^.]+)\.\.\.", line)
+                match = re.match(r"\d+\s+(\d+)aa,\s+>(\S+?)\.\.\.", line)
                 if match:
                     length = int(match.group(1))
                     seq_id = match.group(2)
@@ -85,7 +85,13 @@ def main(
         for mid in missing_ids[:10]:
             logger.warning(f"  Missing: {mid}")
 
-    records.sort(key=lambda r: int(r.id.split("_")[0]))
+    def _sort_key(r):
+        head = r.id.split("_")[0]
+        try:
+            return (0, int(head))
+        except ValueError:
+            return (1, r.id)
+    records.sort(key=_sort_key)
 
     logger.info(f"Writing {len(records)} sequences to {output_path}")
     SeqIO.write(records, output_path, "fasta")

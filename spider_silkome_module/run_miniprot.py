@@ -34,13 +34,24 @@ def run_miniprot(
     output_gff: Path,
     threads: int = 70,
     outc: float = 0.8,
+    max_intron: int | None = None,
+    outs: float | None = None,
     force: bool = False,
 ) -> None:
     """
     Run miniprot alignment for a single genome.
+
+    When max_intron is given, '-G {max_intron}' overrides the default '-I'
+    (auto-set max intron by genome size).  Useful for full-length protein
+    alignment where intron length should be capped explicitly.
+
+    When outs is given, '--outs {outs}' filters out hits below the score-fraction
+    threshold (best score / second-best).  Higher = stricter.
     """
+    intron_arg = f"-G {max_intron}" if max_intron is not None else "-I"
+    outs_arg = f"--outs {outs}" if outs is not None else ""
     cmd = (
-        f"miniprot -S --gff-delim . --outc {outc} -t {threads} -I --gff-only "
+        f"miniprot -S --gff-delim . --outc {outc} {outs_arg} -t {threads} {intron_arg} --gff-only "
         f"{mpi_path} {protein_fasta} > {output_gff}"
     )
     run_cmd(cmd, [output_gff], force=force)
@@ -53,6 +64,8 @@ def main(
     output_path: Path = INTERIM_DATA_DIR / "miniprot_mapping_20260127" / "miniprot",
     threads: int = 70,
     outc: float = 0.8,
+    max_intron: int | None = None,
+    outs: float | None = None,
     force: bool = False,
 ):
     """
@@ -77,7 +90,7 @@ def main(
         logger.info(f"Processing {species_name}: {mpi_path}")
         output_gff = output_path / f"{species_name}.gff"
 
-        run_miniprot(mpi_path, protein_fasta, output_gff, threads, outc, force)
+        run_miniprot(mpi_path, protein_fasta, output_gff, threads, outc, max_intron, outs, force)
         logger.info(f"Output: {output_gff}")
 
     logger.success(f"Completed miniprot alignment for {len(mpi_files)} genome(s)")
