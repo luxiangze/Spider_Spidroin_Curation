@@ -137,6 +137,17 @@ AcSp, AgSp1, AgSp2, CrSp, CySp, Flag, MaSp, MaSp1, MaSp2, MaSp2B, MaSp3, MaSp3B,
 - **Server**: Ubuntu, paths are case-sensitive
 - **Code comments**: English only
 - **Formatting**: `ruff` is configured (run `pixi run ruff check` to lint)
+- **Parallelism**: when an analysis loop processes many independent items
+  (per-species, per-spidroin, per-file …), it MUST be parallelized — typically
+  with `concurrent.futures.ThreadPoolExecutor` for subprocess-bound tasks
+  (HMMER / miniprot / MAFFT) or `ProcessPoolExecutor` for pure-Python CPU work.
+  Pin BLAS/OMP threads (`OMP_NUM_THREADS=1` etc.) when fanning out so per-task
+  threading does not cause oversubscription. The server has 80 logical cores;
+  default to `workers=75`, leaving 5 cores for the OS.
+- **Resumability**: long-running pipelines MUST be resumable — write each
+  unit's outputs idempotently and use either an output-file existence check or
+  a `_done.flag` sentinel so re-running the script skips already-finished work.
+  Always expose `--force` to override.
 
 ---
 
@@ -172,6 +183,56 @@ python agents/spidroin_id_agent.py \
   --miniprot-dir data/processed/miniprot_output \
   --output results/spidroin_candidates.tsv
 ```
+
+---
+
+## Publishing Reports (Cloudflare Pages)
+
+HTML reports under `reports/` can be published to a single Cloudflare Pages
+project with a stable URL, suitable for sharing in Yuque/Feishu/etc.
+
+**One-time setup**: Cloudflare account (free) + Node.js (already installed).
+
+```bash
+# First-time login (opens browser, credentials saved to ~/.config/.wrangler/)
+npx wrangler@latest login
+```
+
+**Default workflow** — publish every top-level `*.html` under `reports/`:
+
+```bash
+# 1. Regenerate reports (or run the corresponding notebooks)
+pixi run python -m spider_silkome_module.build_comparison_report
+
+# 2. Deploy. Auto-generates an index.html landing page that lists every report.
+pixi run python scripts/publish_report.py
+```
+
+Output URL: `https://spider-silkome-reports.pages.dev/`
+- Root: card-style index of all published reports
+- Sub-paths: `/<report_name>.html` for each report
+- Subsequent calls overwrite the same URL — bookmarked links always show latest
+
+**Selective publishing** (only specific files):
+
+```bash
+pixi run python scripts/publish_report.py reports/agent_vs_manual_report.html
+pixi run python scripts/publish_report.py reports/foo.html reports/bar.html
+```
+
+**Custom project name** (e.g. for a separate review channel):
+
+```bash
+pixi run python scripts/publish_report.py --project-name=my-other-project reports/*.html
+# → https://my-other-project.pages.dev/
+```
+
+The index page is regenerated on each deploy, scanning every staged HTML for
+its `<title>` tag and file mtime to render report cards.
+
+**Optional**: enable Cloudflare Access (free) on the project to require email
+verification before pages load — useful for sharing with a small group without
+fully public exposure.
 
 ---
 
