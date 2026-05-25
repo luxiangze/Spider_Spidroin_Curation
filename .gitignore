@@ -5,6 +5,12 @@ data/**
 # Cache
 /cache/
 
+# reports
+reports/**
+
+# wrangler
+/.wrangler/
+
 # Mac OS-specific storage files
 .DS_Store
 
