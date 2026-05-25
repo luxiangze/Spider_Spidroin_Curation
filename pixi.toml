@@ -50,6 +50,8 @@ genblasta = ">=1.0.4,<2"
 salmon = ">=1.10.3,<2"
 langchain = ">=1.2.14,<2"
 langchain-openai = ">=1.1.12,<2"
+pygenometracks = ">=3.3,<4"
+orfanage = ">=1.2.0,<2"
 
 [pypi-dependencies]
 mkdocs = "*"
