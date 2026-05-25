@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 
 from loguru import logger
 from tqdm import tqdm
@@ -100,6 +101,48 @@ def press_hmm_models(hmm_dir: Path, force: bool = False) -> None:
         run_cmd(cmd, [h3m_file], force=force)
 
 
+def _has_alphabet_error(log_file: Path) -> bool:
+    """True if HMMER's stderr indicates target alphabet autodetect failure."""
+    if not log_file.exists():
+        return False
+    try:
+        return "Unable to guess alphabet" in log_file.read_text(errors="replace")
+    except OSError:
+        return False
+
+
+def _decompress_with_seed(gz_path: Path, dst: Path, threads: int) -> None:
+    """
+    Decompress a gzipped FASTA with a tiny ACGT-balanced seed scaffold prepended,
+    so HMMER's alphabet autodetect succeeds even when the first real scaffold is
+    an AT-only softmasked repeat.
+    """
+    seed_header = ">__alphabet_seed__ synthetic, prepended for HMMER alphabet autodetect"
+    seed_seq = "ACGT" * 50  # 200 bp; negligible vs Gb-scale genomes
+    with dst.open("w") as f:
+        f.write(f"{seed_header}\n{seed_seq}\n")
+    subprocess.run(
+        f"pigz -dc -p {threads} {gz_path} >> {dst}",
+        shell=True, executable="/bin/bash", check=True,
+    )
+
+
+def _tbl_is_complete(tbl_file: Path) -> bool:
+    """A finished nhmmer tblout ends with a `# [ok]` marker line."""
+    if not tbl_file.exists() or tbl_file.stat().st_size == 0:
+        return False
+    try:
+        with tbl_file.open("rb") as f:
+            # Read last 64 bytes; the marker line is short.
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - 64))
+            tail = f.read().decode(errors="replace")
+        return "# [ok]" in tail
+    except OSError:
+        return False
+
+
 def run_nhmmer(
     genome_path: Path,
     hmm_file: Path,
@@ -109,20 +152,51 @@ def run_nhmmer(
 ) -> None:
     """
     Run nhmmer search for a single genome and HMM model.
+
+    Resume-safe: skips if the previous .tbl ends with HMMER's `# [ok]` marker.
+    Removes partial outputs on failure so the next run retries cleanly.
     """
     model_name = hmm_file.stem.split(".")[0]
     tbl_file = output_dir / f"{model_name}.tbl"
     out_file = output_dir / f"{model_name}.out"
+    log_file = output_dir / f"{model_name}.stderr.log"
 
-    # nhmmer cannot read gzipped FASTA directly; stream via pigz (parallel) when needed.
+    if not force and _tbl_is_complete(tbl_file):
+        logger.debug(f"Skip (already complete): {tbl_file}")
+        return
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Stream gzipped genomes via pigz to nhmmer's stdin (no temp file).
+    # Note: HMMER's alphabet autodetect can fail on softmasked genomes whose
+    # first scaffold is AT-only; the caller in main() falls back to decompressing
+    # with a small ACGT seed prepended in that case.
     if genome_path.suffix == ".gz":
         cmd = (
+            f"set -o pipefail; "
             f"pigz -dc -p {threads} {genome_path} | "
             f"nhmmer --cpu {threads} --tblout {tbl_file} {hmm_file} - > {out_file}"
         )
     else:
         cmd = f"nhmmer --cpu {threads} --tblout {tbl_file} {hmm_file} {genome_path} > {out_file}"
-    run_cmd(cmd, [out_file], force=force)
+
+    with log_file.open("w") as err:
+        proc = subprocess.run(cmd, shell=True, executable="/bin/bash", stderr=err)
+
+    if proc.returncode != 0 or not _tbl_is_complete(tbl_file):
+        # Clean up partial outputs so the next run actually retries this combo.
+        for p in (tbl_file, out_file):
+            if p.exists():
+                p.unlink()
+        raise RuntimeError(
+            f"nhmmer failed for {genome_path.name} x {hmm_file.name} "
+            f"(exit={proc.returncode}); see {log_file}"
+        )
+
+    # Successful run: drop the (now empty / stale) stderr log so leftover
+    # error messages from previous failed attempts don't linger on disk.
+    if log_file.exists():
+        log_file.unlink()
 
 
 @app.command()
@@ -160,18 +234,68 @@ def main(
 
     output_path.mkdir(parents=True, exist_ok=True)
 
+    failed: list[tuple[str, str]] = []
     for species_name, genome_file in tqdm(genome_files, desc="Processing genomes"):
-        logger.info(f"Processing {species_name}: {genome_file}")
-
         species_output_dir = output_path / species_name
         species_output_dir.mkdir(parents=True, exist_ok=True)
 
-        for hmm_file in hmm_files:
-            run_nhmmer(genome_file, hmm_file, species_output_dir, threads, force)
+        # Resume: skip the whole species if every HMM already has a complete tbl.
+        if not force and all(
+            _tbl_is_complete(species_output_dir / f"{h.stem.split('.')[0]}.tbl") for h in hmm_files
+        ):
+            logger.info(f"Skip {species_name}: all {len(hmm_files)} models already complete")
+            continue
+
+        logger.info(f"Processing {species_name}: {genome_file}")
+
+        # Default: stream the .gz directly via pigz (no disk usage). On the
+        # first HMM that fails with "Unable to guess alphabet", decompress this
+        # species with a 200bp ACGT seed prepended and reuse for all HMMs.
+        target_path = genome_file
+        tmp_decompressed: Path | None = None
+        try:
+            for hmm_file in hmm_files:
+                try:
+                    run_nhmmer(target_path, hmm_file, species_output_dir, threads, force)
+                    continue
+                except (RuntimeError, subprocess.CalledProcessError) as e:
+                    log_file = species_output_dir / f"{hmm_file.stem.split('.')[0]}.stderr.log"
+                    is_alphabet_err = (
+                        target_path.suffix == ".gz"
+                        and tmp_decompressed is None
+                        and _has_alphabet_error(log_file)
+                    )
+                    if not is_alphabet_err:
+                        logger.error(f"{species_name} / {hmm_file.stem}: {e}")
+                        failed.append((species_name, hmm_file.stem))
+                        continue
+
+                # Fallback: decompress with seed once, then retry this HMM.
+                tmp_decompressed = species_output_dir / f"{species_name}.decompressed.fa"
+                logger.warning(
+                    f"Alphabet autodetect failed for {species_name}; "
+                    f"decompressing with ACGT seed -> {tmp_decompressed}"
+                )
+                _decompress_with_seed(genome_file, tmp_decompressed, threads)
+                target_path = tmp_decompressed
+                try:
+                    run_nhmmer(target_path, hmm_file, species_output_dir, threads, force)
+                except (RuntimeError, subprocess.CalledProcessError) as e2:
+                    logger.error(f"{species_name} / {hmm_file.stem}: {e2}")
+                    failed.append((species_name, hmm_file.stem))
+        finally:
+            if tmp_decompressed is not None and tmp_decompressed.exists():
+                tmp_decompressed.unlink()
 
         logger.info(f"Completed: {species_name}")
 
-    logger.success(f"Completed nhmmer search for {len(genome_files)} genome(s)")
+    if failed:
+        logger.warning(f"{len(failed)} (species, model) combinations failed:")
+        for sp, m in failed:
+            logger.warning(f"  - {sp} / {m}")
+        logger.warning("Re-run the same command to retry only the failed/incomplete ones.")
+    else:
+        logger.success(f"Completed nhmmer search for {len(genome_files)} genome(s)")
 
 
 if __name__ == "__main__":
