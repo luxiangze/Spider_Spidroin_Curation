@@ -16,7 +16,7 @@ Hints are written to:
 Hint translation rules:
   - first CDS block start  → 'start' hint
   - last CDS block end     → 'stop' hint
-  - each CDS block         → 'exonpart' hint
+  - each CDS block         → 'CDSpart' hint
   - between consecutive CDS blocks → 'intron' hint (if gap > 0)
 """
 
@@ -44,7 +44,7 @@ AA_OUTPUT = "augustus_output.aa"
 
 def write_hints(species_gff: Path, hints_path: Path) -> int:
     """
-    Convert miniprot best-hit CDS rows into Augustus exon/intron/start/stop
+    Convert miniprot best-hit CDS rows into Augustus CDS/intron/start/stop
     hints with source 'P' (protein).  Returns number of hint lines written.
     """
     records_per_id = parse_miniprot_gff(species_gff)
@@ -69,10 +69,10 @@ def write_hints(species_gff: Path, hints_path: Path) -> int:
                 f"{r.score}\t{r.strand}\t.\tsrc=P;grp={sid};pri=4\n"
             )
             n += 1
-            # exon-part + intron hints
+            # CDS-part + intron hints
             for s, e, _ in r.cds_blocks:
                 out.write(
-                    f"{sid}\tminiprot\texonpart\t{s}\t{e}\t"
+                    f"{sid}\tminiprot\tCDSpart\t{s}\t{e}\t"
                     f"{r.score}\t{r.strand}\t.\tsrc=P;grp={sid};pri=4\n"
                 )
                 n += 1

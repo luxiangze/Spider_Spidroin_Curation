@@ -14,10 +14,26 @@ Outputs (per spidroin):
     ctd_strict.aln
     ctd_loose.aln
     overview.aln      full predicted protein vs same-type panel (MAFFT --auto)
+    _done.flag        sentinel JSON marking the spidroin as fully processed
 
 Reference panels are read from data/interim/spidroin_proteins/<TYPE>_<NTD|CTD>.fa.
+
+Parallelism & resumability:
+  * Tasks are flattened across all species and dispatched to a ThreadPool
+    (subprocess-bound, GIL-friendly). Default workers=75 fits the 80-thread
+    server while leaving 5 cores for the OS.
+  * Each MAFFT process is pinned to 1 thread (mafft_threads=1) plus
+    OMP/MKL/OpenBLAS env vars are set to "1", so the effective concurrency is
+    exactly `workers` and there is no thread oversubscription.
+  * On completion of a spidroin, a `_done.flag` file is written into its
+    workdir. Re-running the script skips any spidroin whose flag exists.
+    Pass --force to ignore flags and recompute everything.
 """
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
+import json
+import os
 from pathlib import Path
 
 from Bio import SeqIO
@@ -41,6 +57,10 @@ DEFAULT_REF_DIR = INTERIM_DATA_DIR / "spidroin_proteins"
 _MIN_PANEL_SIZE = 3
 # Cap reference panel sizes so MAFFT runs in a reasonable time.
 _MAX_PANEL_SIZE = 80
+# Sentinel filename written into each spidroin workdir on success.
+_DONE_FLAG = "_done.flag"
+# Tags of all .aln outputs produced per spidroin.
+_OUTPUT_TAGS = ("ntd_strict", "ntd_loose", "ctd_strict", "ctd_loose", "overview")
 
 
 # ── reference panel handling ─────────────────────────────────────────────────
@@ -168,6 +188,27 @@ def make_msa(
     return final_aln
 
 
+# ── checkpoint helpers ──────────────────────────────────────────────────────
+
+
+def _is_done(workdir: Path) -> bool:
+    """Return True if this spidroin has already been fully processed."""
+    return (workdir / _DONE_FLAG).exists()
+
+
+def _mark_done(workdir: Path, status: dict) -> None:
+    """Write the sentinel JSON file marking the workdir as complete."""
+    workdir.mkdir(parents=True, exist_ok=True)
+    (workdir / _DONE_FLAG).write_text(json.dumps(status, indent=2))
+
+
+def _clear_outputs(workdir: Path) -> None:
+    """Remove sentinel + all .aln files when --force is requested."""
+    for tag in _OUTPUT_TAGS:
+        (workdir / f"{tag}.aln").unlink(missing_ok=True)
+    (workdir / _DONE_FLAG).unlink(missing_ok=True)
+
+
 def process_spidroin(
     row: dict,
     pred_seq: str,
@@ -178,21 +219,27 @@ def process_spidroin(
 ) -> dict:
     """Generate the five .aln files for one spidroin entry; return a status dict."""
     sid = row["spidroin_id"]
+    workdir = species_msa_dir / sid
+
+    # Resume: skip if the sentinel already exists (unless --force).
+    if not force and _is_done(workdir):
+        return {"spidroin_id": sid, "skipped": True}
+    if force:
+        _clear_outputs(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+
     spt = row.get("spidroin_type") or ""
     ntd_panel_strict = _load_reference_panel(ref_dir, spt, "NTD")
     ctd_panel_strict = _load_reference_panel(ref_dir, spt, "CTD")
     ntd_panel_loose = build_loose_panel(ref_dir, spt, "NTD")
     ctd_panel_loose = build_loose_panel(ref_dir, spt, "CTD")
 
-    workdir = species_msa_dir / sid
-    workdir.mkdir(parents=True, exist_ok=True)
-
     ntd_seq = slice_domain(pred_seq, row.get("hmm_ntd_from"),
                            row.get("hmm_ntd_to"), fallback="ntd")
     ctd_seq = slice_domain(pred_seq, row.get("hmm_ctd_from"),
                            row.get("hmm_ctd_to"), fallback="ctd")
 
-    status = {"spidroin_id": sid}
+    status: dict = {"spidroin_id": sid}
     status["ntd_strict"] = bool(make_msa(sid, ntd_seq, ntd_panel_strict,
                                           workdir, "ntd_strict",
                                           threads, False, force))
@@ -214,44 +261,73 @@ def process_spidroin(
         status["overview"] = (workdir / "overview.aln").exists()
     else:
         status["overview"] = False
+
+    _mark_done(workdir, status)
     return status
 
 
-def process_species(
-    species_name: str,
-    confirmation_species_dir: Path,
-    msa_species_dir: Path,
-    ref_dir: Path,
-    threads: int,
+# ── task list & dispatch ────────────────────────────────────────────────────
+
+
+@dataclass
+class _Task:
+    """A single unit of work: produce all .aln files for one spidroin."""
+    species: str
+    row: dict
+    pred_seq: str
+    species_msa_dir: Path
+
+    @property
+    def spidroin_id(self) -> str:
+        return self.row["spidroin_id"]
+
+    @property
+    def workdir(self) -> Path:
+        return self.species_msa_dir / self.spidroin_id
+
+
+def _build_task_list(
+    species_dirs: list[Path],
+    msa_dir: Path,
+    only_validated: bool,
     force: bool,
-    only_validated: bool = True,
-) -> int:
-    """Iterate spidroins of a species; return number of processed entries."""
-    confirmation_tsv = confirmation_species_dir / "protein_confirmation.tsv"
-    pred_fa = confirmation_species_dir / "predicted_proteins.fa"
-    if not confirmation_tsv.exists() or not pred_fa.exists():
-        logger.warning(f"[{species_name}] missing inputs, skipping")
-        return 0
-
-    df = pl.read_csv(confirmation_tsv, separator="\t", infer_schema_length=1000)
-    if only_validated and "validation_status" in df.columns:
-        df = df.filter(pl.col("validation_status").is_in(["validated", "partial"]))
-    if df.is_empty():
-        logger.info(f"[{species_name}] no rows pass filter, skipping")
-        return 0
-
-    seqs = _load_predicted(pred_fa)
-    msa_species_dir.mkdir(parents=True, exist_ok=True)
-
-    n = 0
-    for row in df.to_dicts():
-        sid = row["spidroin_id"]
-        seq = seqs.get(sid, "")
-        if not seq:
+) -> tuple[list[_Task], int]:
+    """Walk all species dirs, return (pending_tasks, n_already_done)."""
+    tasks: list[_Task] = []
+    n_skipped = 0
+    for sp_dir in species_dirs:
+        confirmation_tsv = sp_dir / "protein_confirmation.tsv"
+        pred_fa = sp_dir / "predicted_proteins.fa"
+        if not (confirmation_tsv.exists() and pred_fa.exists()):
+            logger.warning(f"[{sp_dir.name}] missing inputs, skipping")
             continue
-        process_spidroin(row, seq, msa_species_dir, ref_dir, threads, force)
-        n += 1
-    return n
+
+        df = pl.read_csv(confirmation_tsv, separator="\t", infer_schema_length=1000)
+        if only_validated and "validation_status" in df.columns:
+            df = df.filter(pl.col("validation_status").is_in(["validated", "partial"]))
+        if df.is_empty():
+            continue
+
+        seqs = _load_predicted(pred_fa)
+        species_msa_dir = msa_dir / sp_dir.name
+        for row in df.to_dicts():
+            sid = row["spidroin_id"]
+            seq = seqs.get(sid, "")
+            if not seq:
+                continue
+            workdir = species_msa_dir / sid
+            if not force and _is_done(workdir):
+                n_skipped += 1
+                continue
+            tasks.append(_Task(sp_dir.name, row, seq, species_msa_dir))
+    return tasks, n_skipped
+
+
+def _run_task(task: _Task, ref_dir: Path, mafft_threads: int, force: bool) -> dict:
+    return process_spidroin(
+        task.row, task.pred_seq, task.species_msa_dir,
+        ref_dir, mafft_threads, force,
+    )
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
@@ -262,14 +338,29 @@ def main(
     confirmation_dir: Path = PROCESSED_DATA_DIR / DEFAULT_TASK_NAME / "confirmation",
     msa_dir: Path = PROCESSED_DATA_DIR / DEFAULT_TASK_NAME / "msa",
     ref_dir: Path = DEFAULT_REF_DIR,
-    threads: int = 8,
+    threads: int = 75,
+    mafft_threads: int = 1,
     species: str | None = None,
     only_validated: bool = True,
     force: bool = False,
 ):
     """
     Generate per-spidroin domain-level MSAs (NTD/CTD strict + loose, overview).
+
+    `threads`        — number of spidroins processed in parallel (ThreadPool size).
+                       Default 75 fits an 80-core box with 5 cores left for the OS.
+    `mafft_threads`  — threads per MAFFT subprocess. Keep 1 unless `threads` is
+                       very small; otherwise threads*mafft_threads oversubscribes.
+
+    Resumable: each completed spidroin writes a `_done.flag`; re-running the
+    script skips already-done units. Pass --force to recompute everything.
     """
+    # Pin BLAS/OMP threads inside every spawned subprocess to avoid
+    # oversubscription when `threads` is high. setdefault keeps any
+    # caller-supplied override intact.
+    for v in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
+        os.environ.setdefault(v, "1")
+
     species_dirs = sorted(d for d in confirmation_dir.iterdir() if d.is_dir())
     if species is not None:
         species_dirs = [d for d in species_dirs if d.name == species]
@@ -277,16 +368,43 @@ def main(
         logger.error(f"No species under {confirmation_dir} matching filter")
         raise typer.Exit(1)
 
-    total = 0
-    for sp_dir in tqdm(species_dirs, desc="Generating MSAs"):
-        n = process_species(
-            sp_dir.name, sp_dir,
-            msa_dir / sp_dir.name,
-            ref_dir, threads, force, only_validated,
-        )
-        logger.info(f"[{sp_dir.name}] {n} spidroins MSA-aligned")
-        total += n
-    logger.success(f"MSA generation complete for {total} spidroins")
+    logger.info(f"Scanning {len(species_dirs)} species directories ...")
+    tasks, n_skipped = _build_task_list(species_dirs, msa_dir, only_validated, force)
+    logger.info(f"  {len(tasks)} pending  ·  {n_skipped} already done (resume)")
+
+    if not tasks:
+        logger.success("All spidroin MSAs already generated; nothing to do.")
+        return
+
+    n_done = n_failed = 0
+    if threads <= 1:
+        for task in tqdm(tasks, desc="MSA"):
+            try:
+                _run_task(task, ref_dir, mafft_threads, force)
+                n_done += 1
+            except Exception as exc:
+                n_failed += 1
+                logger.error(f"[{task.species}/{task.spidroin_id}] failed: {exc}")
+    else:
+        logger.info(f"Dispatching across {threads} workers (mafft --thread {mafft_threads})")
+        with ThreadPoolExecutor(max_workers=threads) as pool:
+            futures = {
+                pool.submit(_run_task, t, ref_dir, mafft_threads, force): t
+                for t in tasks
+            }
+            for fut in tqdm(as_completed(futures), total=len(tasks), desc="MSA"):
+                t = futures[fut]
+                try:
+                    fut.result()
+                    n_done += 1
+                except Exception as exc:
+                    n_failed += 1
+                    logger.error(f"[{t.species}/{t.spidroin_id}] failed: {exc}")
+
+    if n_failed:
+        logger.warning(f"MSA generation: done={n_done}  failed={n_failed}  skipped={n_skipped}")
+    else:
+        logger.success(f"MSA generation complete: done={n_done}  skipped={n_skipped}")
 
 
 if __name__ == "__main__":
