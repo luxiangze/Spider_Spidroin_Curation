@@ -70,16 +70,16 @@ Reciprocal overlap threshold: **50%**
 
 | species                         |   tp |   fn |   fp |   precision |   recall |   f1 |
 |:--------------------------------|-----:|-----:|-----:|------------:|---------:|-----:|
-| 062.Anelosimus studiosus        |    0 |    0 |   23 |       0.000 |      nan |  nan |
-| 061.Amaurobius ferox            |    0 |    0 |   20 |       0.000 |      nan |  nan |
+| 055.Tricalamus sp               |    0 |    0 |    1 |       0.000 |      nan |  nan |
 | 117.Tetragnatha versicolor      |    0 |    0 |   19 |       0.000 |      nan |  nan |
 | 125.Aptostichus stephencolberti |    0 |    0 |    7 |       0.000 |      nan |  nan |
-| 124.Uloborus plumipes           |    0 |    0 |   11 |       0.000 |      nan |  nan |
+| 115.Tetragnatha kauaiensis      |    0 |    0 |   21 |       0.000 |      nan |  nan |
+| 062.Anelosimus studiosus        |    0 |    0 |   23 |       0.000 |      nan |  nan |
 | 123.Uloborus diversus           |    0 |    0 |   14 |       0.000 |      nan |  nan |
-| 046.Scytodidae sp               |    0 |    0 |    1 |       0.000 |      nan |  nan |
-| 066.Argiope aurantia            |    0 |    0 |   56 |       0.000 |      nan |  nan |
-| 120.Trichonephila clavipes      |    0 |    0 |   34 |       0.000 |      nan |  nan |
-| 122.Troglohyphantes excavatus   |    0 |    0 |   10 |       0.000 |      nan |  nan |
+| 061.Amaurobius ferox            |    0 |    0 |   20 |       0.000 |      nan |  nan |
+| 060.Acanthoscurria geniculata   |    0 |    0 |    7 |       0.000 |      nan |  nan |
+| 038.Plator bowo                 |    0 |    0 |    8 |       0.000 |      nan |  nan |
+| 124.Uloborus plumipes           |    0 |    0 |   11 |       0.000 |      nan |  nan |
 
 ## Top Spidroin_type confusions
 
@@ -88,11 +88,11 @@ Reciprocal overlap threshold: **50%**
 | acsp     | acsp      |     182 |
 | acsp     | masp      |       3 |
 | acsp     | cysp      |       2 |
-| acsp     | masp/acsp |       1 |
 | acsp     | pysp      |       1 |
+| acsp     | masp/acsp |       1 |
 | agsp1    | agsp1     |      24 |
-| agsp1    | unknown   |       1 |
 | agsp1    | acsp      |       1 |
+| agsp1    | unknown   |       1 |
 | agsp2    | agsp2     |      29 |
 | crsp     | crsp      |       7 |
 | cysp     | cysp      |      72 |
