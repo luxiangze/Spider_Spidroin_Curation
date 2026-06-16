@@ -1,11 +1,7 @@
 """Publish HTML reports to Cloudflare Pages with an auto-generated index page.
 
-First-time setup (one shot, OAuth browser login):
+First-time setup (one shot):
     npx wrangler@latest login
-
-Or use API authentication by setting these in ``.env`` or the shell:
-    CLOUDFLARE_API_TOKEN=...
-    CLOUDFLARE_ACCOUNT_ID=...
 
 Default behavior: publishes every top-level ``*.html`` under ``reports/`` and
 renders a landing ``index.html`` linking to each report. Idempotent: the
@@ -25,7 +21,6 @@ from __future__ import annotations
 
 from datetime import datetime
 import html
-import os
 from pathlib import Path
 import re
 import shutil
@@ -33,7 +28,6 @@ import subprocess
 import tempfile
 from typing import Optional
 
-from dotenv import load_dotenv
 from loguru import logger
 import typer
 
@@ -47,7 +41,6 @@ _TITLE_RE = re.compile(r"<title>([^<]+)</title>", re.IGNORECASE)
 _WRANGLER_CMD = ["npx", "--yes", "wrangler@latest"]
 _DEFAULT_PROJECT = "spider-silkome-reports"
 _REPORTS_DIR = Path("reports")
-_DEFAULT_ENV_FILE = Path(".env")
 
 
 # ─── Index page ──────────────────────────────────────────────────────────
@@ -143,62 +136,20 @@ def _generate_index(deploy_dir: Path) -> int:
 # ─── Wrangler operations ─────────────────────────────────────────────────
 
 
-def _load_env_file(path: Path) -> None:
-    """Load API credentials from a local .env file without overwriting shell env."""
-    if not path.is_file():
-        return
-    load_dotenv(path, override=False)
-    logger.info(f"Loaded environment variables from {path}")
-
-
 def _run_wrangler(*args: str, capture: bool = False) -> str:
     """Run ``wrangler`` with given args. Returns stdout+stderr if capture else ''."""
     cmd = [*_WRANGLER_CMD, *args]
     if capture:
         proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        if proc.returncode != 0:
-            raise subprocess.CalledProcessError(
-                proc.returncode,
-                cmd,
-                output=proc.stdout,
-                stderr=proc.stderr,
-            )
         return proc.stdout + proc.stderr
     subprocess.run(cmd, check=True)
     return ""
 
 
 def _check_auth() -> None:
-    """Accept either OAuth login or CLOUDFLARE_API_TOKEN-based Wrangler auth."""
-    has_api_token = bool(os.environ.get("CLOUDFLARE_API_TOKEN"))
-    has_account_id = bool(os.environ.get("CLOUDFLARE_ACCOUNT_ID"))
-
-    cmd = [*_WRANGLER_CMD, "whoami"]
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    output = (proc.stdout + proc.stderr).strip()
-
-    if proc.returncode == 0:
-        if has_api_token:
-            logger.info("Cloudflare API token detected.")
-            if not has_account_id:
-                logger.warning(
-                    "CLOUDFLARE_ACCOUNT_ID is not set; Pages commands may ask for an account."
-                )
-        return
-
-    if has_api_token:
-        logger.error(
-            "Cloudflare API token is set, but Wrangler authentication failed. "
-            "Check CLOUDFLARE_API_TOKEN permissions and CLOUDFLARE_ACCOUNT_ID."
-        )
-    else:
-        logger.error(
-            "Not authenticated to Cloudflare. Run once: npx wrangler@latest login, "
-            "or set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in .env."
-        )
-    if output:
-        logger.error(output)
-    raise typer.Exit(1)
+    if "You are logged in" not in _run_wrangler("whoami", capture=True):
+        logger.error("Not logged in to Cloudflare. Run once: npx wrangler@latest login")
+        raise typer.Exit(1)
 
 
 def _ensure_project(name: str) -> None:
@@ -232,15 +183,8 @@ def main(
         "--project-name",
         help="Cloudflare Pages project name. Lowercase alnum + hyphens, 1-58 chars.",
     ),
-    env_file: Path = typer.Option(
-        _DEFAULT_ENV_FILE,
-        "--env-file",
-        help="Path to a .env file containing Cloudflare credentials.",
-    ),
 ):
-    # 1. Load optional .env credentials, then validate project name format upfront.
-    _load_env_file(env_file)
-
+    # 1. Validate project name format upfront.
     if not _PROJECT_NAME_RE.match(project_name):
         logger.error(
             f"Invalid project name '{project_name}'. Must be lowercase alphanumeric "

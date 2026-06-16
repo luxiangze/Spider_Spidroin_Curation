@@ -99,11 +99,22 @@ extracted from each report's `<title>` tag), then uploads. Subsequent runs
 reuse the same project so the public URL stays stable for sharing in
 Yuque/Feishu/etc.
 
-First-time setup (one shot, opens a browser for OAuth):
+Authentication options:
+
+OAuth login, one shot, opens a browser:
 
 ```bash
 npx wrangler@latest login
 ```
+
+Or API authentication in `.env` or the shell:
+
+```bash
+CLOUDFLARE_API_TOKEN=your_cloudflare_api_token
+CLOUDFLARE_ACCOUNT_ID=your_cloudflare_account_id
+```
+
+`ANTHROPIC_API_KEY` and `DASHSCOPE_API_KEY` are for LLM calls; Cloudflare Pages deployment needs the Cloudflare variables above.
 
 ```bash
 # Default: publish every reports/*.html
