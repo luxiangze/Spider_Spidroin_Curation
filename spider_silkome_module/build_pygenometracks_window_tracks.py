@@ -15,9 +15,14 @@ app = typer.Typer()
 
 Feature = dict[str, Any]
 Window = dict[str, Any]
+SelectedLookup = dict[tuple[str, str], dict[str, str]]
 
 
 PLOT_FEATURES = {"mRNA", "CDS"}
+WINDOW_MINIPROT_COLOR = "#1f78b4"
+WINDOW_MINIPROT_BORDER_COLOR = "#0b4f71"
+SELECTED_MINIPROT_COLOR = "#ff7f00"
+SELECTED_MINIPROT_BORDER_COLOR = "#a64a00"
 
 
 def parse_attrs(attr_str: str) -> dict[str, str]:
@@ -123,6 +128,28 @@ def load_models(models_jsonl: Path, min_positive: float | None = None) -> list[d
     return models
 
 
+def load_selected_mpids(selected_mpid_tsv: Path | None) -> SelectedLookup:
+    if selected_mpid_tsv is None or not selected_mpid_tsv.exists() or selected_mpid_tsv.stat().st_size == 0:
+        return {}
+    selected: SelectedLookup = {}
+    with selected_mpid_tsv.open() as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        for row in reader:
+            window_id = row.get("window_id")
+            mpid = row.get("mpid")
+            if window_id and mpid:
+                selected[(window_id, mpid)] = row
+    return selected
+
+
+def is_selected_model(model: dict[str, Any], selected_lookup: SelectedLookup) -> bool:
+    return (model["window_id"], model["mrna_id"]) in selected_lookup
+
+
+def selected_model_info(model: dict[str, Any], selected_lookup: SelectedLookup) -> dict[str, str] | None:
+    return selected_lookup.get((model["window_id"], model["mrna_id"]))
+
+
 def load_windows(windows_bed: Path) -> list[Window]:
     windows: list[Window] = []
     with windows_bed.open() as fh:
@@ -203,14 +230,19 @@ def group_models_by_window(models: list[dict[str, Any]]) -> dict[str, list[dict[
     return grouped
 
 
-def model_common_attrs(model: dict[str, Any]) -> dict[str, Any]:
+def model_common_attrs(
+    model: dict[str, Any],
+    label: str | None = None,
+    extra_attrs: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     gene_id = f"window_gene_{model['mrna_id']}"
     transcript_id = f"window_tx_{model['mrna_id']}"
-    return {
+    model_label = label or f"{model.get('target_protein') or model['mrna_id']}|{model['mrna_id']}"
+    attrs = {
         "gene_id": gene_id,
         "transcript_id": transcript_id,
-        "gene_name": f"{model.get('target_protein') or model['mrna_id']}|{model['mrna_id']}",
-        "transcript_name": f"{model.get('target_protein') or model['mrna_id']}|{model['mrna_id']}",
+        "gene_name": model_label,
+        "transcript_name": model_label,
         "source_window": model["window_id"],
         "target_protein": model.get("target_protein"),
         "identity": model.get("identity"),
@@ -218,14 +250,54 @@ def model_common_attrs(model: dict[str, Any]) -> dict[str, Any]:
         "query_coverage": model.get("query_coverage"),
         "exon_count": model.get("exon_count"),
     }
+    if extra_attrs:
+        attrs.update(extra_attrs)
+    return attrs
 
 
-def write_model_gtf(model: dict[str, Any], handle) -> None:
-    common_attrs = model_common_attrs(model)
+def selected_track_label(model: dict[str, Any], selected_info: dict[str, str] | None) -> str:
+    spidroin_type = (selected_info or {}).get("typing_spidroin_type") or "selected"
+    selection_status = (selected_info or {}).get("selection_status") or "selected"
+    return f"{model['mrna_id']} {spidroin_type} {selection_status}"
+
+
+def track_title(model: dict[str, Any], selected_info: dict[str, str] | None = None) -> str:
+    base = (
+        f"P={format_metric(model.get('positive'))} "
+        f"aa={get_protein_sequence_length(model) or 'NA'} "
+        f"{model['mrna_id']}"
+    )
+    if selected_info is None:
+        return base
+    spidroin_type = selected_info.get("typing_spidroin_type")
+    suffix = f" {spidroin_type}" if spidroin_type else ""
+    return f"SELECTED {base}{suffix}"
+
+
+def selected_extra_attrs(selected_info: dict[str, str] | None) -> dict[str, Any]:
+    if selected_info is None:
+        return {}
+    return {
+        "selection_status": selected_info.get("selection_status"),
+        "selection_mode": selected_info.get("selection_mode"),
+        "typing_spidroin_id": selected_info.get("typing_spidroin_id"),
+        "typing_spidroin_type": selected_info.get("typing_spidroin_type"),
+        "domain_pair_id": selected_info.get("domain_pair_id"),
+    }
+
+
+def write_model_gtf(
+    model: dict[str, Any],
+    handle,
+    source: str = "window_miniprot",
+    label: str | None = None,
+    extra_attrs: dict[str, Any] | None = None,
+) -> None:
+    common_attrs = model_common_attrs(model, label=label, extra_attrs=extra_attrs)
     write_gtf_line(
         handle,
         model["genomic_seqid"],
-        "window_miniprot",
+        source,
         "gene",
         model["genomic_start"],
         model["genomic_end"],
@@ -237,7 +309,7 @@ def write_model_gtf(model: dict[str, Any], handle) -> None:
     write_gtf_line(
         handle,
         model["genomic_seqid"],
-        "window_miniprot",
+        source,
         "transcript",
         model["genomic_start"],
         model["genomic_end"],
@@ -252,7 +324,7 @@ def write_model_gtf(model: dict[str, Any], handle) -> None:
         write_gtf_line(
             handle,
             block["genomic_seqid"],
-            "window_miniprot",
+            source,
             "exon",
             block["genomic_start"],
             block["genomic_end"],
@@ -264,7 +336,7 @@ def write_model_gtf(model: dict[str, Any], handle) -> None:
         write_gtf_line(
             handle,
             block["genomic_seqid"],
-            "window_miniprot",
+            source,
             "CDS",
             block["genomic_start"],
             block["genomic_end"],
@@ -287,19 +359,37 @@ def write_window_miniprot_gtf(models: list[dict[str, Any]], output_gtf: Path) ->
     return len(sorted_models)
 
 
-def track_title(model: dict[str, Any]) -> str:
-    return (
-        f"P={format_metric(model.get('positive'))} "
-        f"aa={get_protein_sequence_length(model) or 'NA'} "
-        f"{model['mrna_id']}"
+def write_selected_miniprot_gtf(
+    models: list[dict[str, Any]],
+    selected_lookup: SelectedLookup,
+    output_gtf: Path,
+) -> int:
+    output_gtf.parent.mkdir(parents=True, exist_ok=True)
+    selected_models = [model for model in models if is_selected_model(model, selected_lookup)]
+    selected_models = sorted(
+        selected_models,
+        key=lambda m: (m["genomic_seqid"], m["genomic_start"], m["genomic_end"], m["mrna_id"]),
     )
+    with output_gtf.open("w") as out:
+        for model in selected_models:
+            selected_info = selected_model_info(model, selected_lookup)
+            write_model_gtf(
+                model,
+                out,
+                source="selected_miniprot",
+                label=selected_track_label(model, selected_info),
+                extra_attrs=selected_extra_attrs(selected_info),
+            )
+    return len(selected_models)
 
 
 def write_ordered_window_miniprot_gtfs(
     models_by_window: dict[str, list[dict[str, Any]]],
     windows: list[Window],
     output_root: Path,
+    selected_lookup: SelectedLookup | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
+    selected_lookup = selected_lookup or {}
     if output_root.exists():
         shutil.rmtree(output_root)
     output_root.mkdir(parents=True, exist_ok=True)
@@ -312,16 +402,22 @@ def write_ordered_window_miniprot_gtfs(
         entries: list[dict[str, Any]] = []
         for rank, model in enumerate(window_models, 1):
             positive = format_metric(model.get("positive"), digits=4)
+            selected_info = selected_model_info(model, selected_lookup)
             gtf_path = window_dir / (
                 f"{rank:03d}_{model['genomic_start']}_{positive}_{safe_name(model['mrna_id'])}.gtf"
             )
             with gtf_path.open("w") as out:
-                write_model_gtf(model, out)
+                write_model_gtf(
+                    model,
+                    out,
+                    extra_attrs=selected_extra_attrs(selected_info),
+                )
             entries.append({
                 "rank": rank,
                 "model": model,
                 "gtf": gtf_path,
-                "title": track_title(model),
+                "title": track_title(model, selected_info),
+                "selected": selected_info is not None,
             })
         tracks_by_window[window["window_id"]] = entries
     return tracks_by_window
@@ -532,6 +628,7 @@ def collect_plot_region(
 def write_track_ini(
     ini_path: Path,
     ordered_window_tracks: list[dict[str, Any]],
+    selected_miniprot_gtf: Path,
     nhmmer_gtf: Path,
     miniprot_evidence_gtf: Path,
     per_mrna_track_height: float,
@@ -539,9 +636,31 @@ def write_track_ini(
     ini_path.parent.mkdir(parents=True, exist_ok=True)
     lines: list[str] = []
 
+    if selected_miniprot_gtf.exists() and selected_miniprot_gtf.stat().st_size > 0:
+        lines.extend([
+            "[selected_mpid_labels]",
+            f"file = {selected_miniprot_gtf.resolve()}",
+            "title = selected MPID",
+            "height = 2.2",
+            "merge_transcripts = false",
+            "prefered_name = transcript_name",
+            "labels = true",
+            "max_labels = 100",
+            "style = UCSC",
+            "display = stacked",
+            "gene_rows = 8",
+            f"color = {SELECTED_MINIPROT_COLOR}",
+            f"border_color = {SELECTED_MINIPROT_BORDER_COLOR}",
+            "",
+        ])
+
     for entry in ordered_window_tracks:
         model = entry["model"]
         section_name = f"window_miniprot_{entry['rank']:03d}_{safe_name(model['mrna_id'])}"
+        color = SELECTED_MINIPROT_COLOR if entry.get("selected") else WINDOW_MINIPROT_COLOR
+        border_color = (
+            SELECTED_MINIPROT_BORDER_COLOR if entry.get("selected") else WINDOW_MINIPROT_BORDER_COLOR
+        )
         lines.extend([
             f"[{section_name}]",
             f"file = {entry['gtf'].resolve()}",
@@ -553,8 +672,8 @@ def write_track_ini(
             "max_labels = 1",
             "style = UCSC",
             "display = collapsed",
-            "color = #1f78b4",
-            "border_color = #0b4f71",
+            f"color = {color}",
+            f"border_color = {border_color}",
             "",
         ])
 
@@ -674,6 +793,7 @@ def main(
     per_mrna_track_height: float = typer.Option(0.65, "--per-mrna-track-height", min=0.1),
     plot_font_size: int = typer.Option(7, "--plot-font-size", min=1),
     plot_width: int = typer.Option(42, "--plot-width", min=1),
+    selected_mpid_tsv: Path | None = typer.Option(None, "--selected-mpid-tsv"),
 ) -> None:
     pygt_dir = output_dir / "pygenometracks"
     gtf_dir = pygt_dir / "gtf"
@@ -682,6 +802,7 @@ def main(
     plots_dir.mkdir(parents=True, exist_ok=True)
 
     models = load_models(models_jsonl, min_positive=min_positive)
+    selected_lookup = load_selected_mpids(selected_mpid_tsv)
     models_by_window = group_models_by_window(models)
     windows = load_windows(windows_bed)
     nhmmer_rows = parse_gff_rows(nhmmer_gff)
@@ -691,13 +812,16 @@ def main(
     ordered_window_miniprot_dir = gtf_dir / "window_miniprot_ordered"
     nhmmer_gtf = gtf_dir / "nhmmer_evidence.gtf"
     miniprot_evidence_gtf = gtf_dir / "miniprot_evidence_models.gtf"
+    selected_miniprot_gtf = gtf_dir / "selected_miniprot_models.gtf"
     commands_tsv = pygt_dir / "pygenometracks_commands.tsv"
 
     n_window = write_window_miniprot_gtf(models, window_miniprot_gtf)
+    n_selected = write_selected_miniprot_gtf(models, selected_lookup, selected_miniprot_gtf)
     ordered_tracks_by_window = write_ordered_window_miniprot_gtfs(
         models_by_window,
         windows,
         ordered_window_miniprot_dir,
+        selected_lookup,
     )
     n_nhmmer = write_nhmmer_gtf(nhmmer_rows, windows, nhmmer_gtf)
     n_evidence = write_miniprot_evidence_gtf(miniprot_evidence_rows, windows, miniprot_evidence_gtf)
@@ -718,6 +842,7 @@ def main(
         write_track_ini(
             tracks_dir / f"{window['safe_name']}.ini",
             ordered_tracks_by_window.get(window["window_id"], []),
+            selected_miniprot_gtf,
             nhmmer_gtf,
             miniprot_evidence_gtf,
             per_mrna_track_height,
@@ -735,6 +860,7 @@ def main(
     )
 
     typer.echo(f"window miniprot models: {n_window}")
+    typer.echo(f"selected miniprot models: {n_selected}")
     typer.echo(f"nhmmer evidence hits: {n_nhmmer}")
     typer.echo(f"miniprot evidence models: {n_evidence}")
     typer.echo(f"windows: {len(windows)}")
