@@ -1,0 +1,34 @@
+# Spidroin Typing Agent Configuration
+# This file contains default paths and parameters for the typing_agent.py
+# All paths are relative to PROJ_ROOT unless absolute paths are provided
+
+# Input/Output paths
+paths:
+  # Directory of nHMMER parsed GFF files (<species>/<species>.gff)
+  nhmmer_dir: "data/processed/hmmer_search_20260211/nhmmer_search_parsed"
+
+  # Directory of miniprot GFF files (<species>.gff)
+  miniprot_dir: "data/processed/miniprot_output"
+
+  # Output directory for TSV summaries
+  output: "results"
+
+  # Rules file for typing thresholds and type mappings
+  rules_file: "docs/typing_rules.yaml"
+
+# Agent parameters
+params:
+  # Maximum gap (bp) between domain windows to merge
+  max_window_gap: 50000
+
+  # Maximum distance (bp) between CTD and cDNA match to pair them
+  max_ctd_cdna_overlap: 100000
+
+  # Minimum miniprot protein coverage for accepting cDNA evidence
+  min_protein_coverage: 0.5
+
+  # Use LangGraph LLM pairing for ambiguous windows (requires ANTHROPIC_API_KEY)
+  use_llm: true
+
+# Note: CLI arguments take precedence over config file values
+# Use --config-file to specify a different config file
