@@ -45,6 +45,29 @@ _DEFAULT_BW_CACHE = PROJ_ROOT / "cache" / "bw"
 _DEFAULT_OUTPUT = PROCESSED_DATA_DIR / "typing_results"
 _DEFAULT_RULES = PROJ_ROOT / "docs" / "typing_rules.yaml"
 
+_DEFAULT_CONFIG = PROJ_ROOT / "agents" / "config.yml"
+
+
+def load_config(config_path: Path) -> dict:
+    """Load configuration from YAML file."""
+    if not config_path.exists():
+        return {}
+    try:
+        import yaml
+        with open(config_path) as f:
+            return yaml.safe_load(f) or {}
+    except Exception as e:
+        logger.warning(f"Failed to load config from {config_path}: {e}")
+        return {}
+
+
+def apply_config_defaults(config: dict, defaults: dict) -> dict:
+    """Apply config values over defaults."""
+    result = defaults.copy()
+    result.update({k: v for k, v in config.items() if v is not None})
+    return result
+
+
 
 # ---------------------------------------------------------------------------
 # GFF parsers
@@ -1374,6 +1397,10 @@ def write_gff_from_tsv(tsv_path: Path, out_path: Path) -> None:
 
 @app.command()
 def main(
+    config_file: Path = typer.Option(
+        _DEFAULT_CONFIG,
+        help="Path to YAML configuration file (overrides CLI defaults)",
+    ),
     nhmmer_dir: Path = typer.Option(
         _DEFAULT_NHMMER_DIR,
         help="Directory of nHMMER parsed GFF files (<species>/<species>.gff)",
@@ -1449,6 +1476,31 @@ def main(
     Parses nHMMER + miniprot results, assembles locus candidates, and writes a TSV summary
     aligned with the Feishu multi-dimensional table schema (docs/feishu_column.md).
     """
+    # ------------------------------------------------------------------
+    # Load and apply config file
+    # ------------------------------------------------------------------
+    config = load_config(config_file)
+    if config:
+        logger.info(f"Loaded config from {config_file}")
+        # Override defaults with config values
+        if config.get("paths", {}).get("nhmmer_dir"):
+            nhmmer_dir = Path(config["paths"]["nhmmer_dir"])
+        if config.get("paths", {}).get("miniprot_dir"):
+            miniprot_dir = Path(config["paths"]["miniprot_dir"])
+        if config.get("paths", {}).get("output"):
+            output = Path(config["paths"]["output"])
+        if config.get("paths", {}).get("rules_file"):
+            rules_file = Path(config["paths"]["rules_file"])
+        # Override parameters
+        if config.get("params", {}).get("max_window_gap") is not None:
+            max_window_gap = config["params"]["max_window_gap"]
+        if config.get("params", {}).get("max_ctd_cdna_overlap") is not None:
+            max_ctd_cdna_overlap = config["params"]["max_ctd_cdna_overlap"]
+        if config.get("params", {}).get("min_protein_coverage") is not None:
+            min_protein_coverage = config["params"]["min_protein_coverage"]
+        if config.get("params", {}).get("use_llm") is not None:
+            use_llm = config["params"]["use_llm"]
+
     # ------------------------------------------------------------------
     # Load rules
     # ------------------------------------------------------------------
