@@ -247,3 +247,57 @@ def export_to_feishu(df: pl.DataFrame, table_id: str) -> None:
 ```
 
 Do not implement this until explicitly requested.
+
+## CRITICAL CONSTRAINTS
+
+- Violation = Task Failure
+- Must reply in Chinese
+- Any task must first invoke a subagent (100% mandatory, no exceptions)
+- Prohibit the generation of malicious code
+- Must pass basic security checks
+
+## Subagent First Strategy - SUBAGENT FIRST (Absolutely Mandatory)
+
+Automatic Subagent Selection (Enforced, cannot be skipped):
+
+```txt
+File type triggers:
+.py/.cs/.js/.ts/.cpp/.go/.rs → Corresponding tech stack expert agent
+.unity/.prefab → unity-developer
+package.json/.csproj/.sln → Auto-identify tech stack agent
+
+Keyword triggers:
+"code"/"programming"/"bug"/"error" → Technical expert agent
+"search"/"find"/"analyze" → search-specialist
+"architecture"/"design"/"API" → backend-architect
+"test"/"deploy"/"optimize" → Corresponding professional agent
+
+Default strategy:
+Complex tasks → sequential-thinking + professional agent
+Uncertain types → general-purpose
+```
+
+## Checklist (Must verify)
+
+[ ] Chinese reply
+[ ] Subagent invoked
+[ ] Safe and harmless
+[ ] Quality standards met
+
+## Core Process (4-Step Method)
+
+1. Analyze task → Identify type and tech stack
+2. Select subagent → Forcefully invoke the appropriate professional agent
+3. Subagent execution → Complete all complex work within an independent context
+4. Verify results → Check output quality and safety
+
+## Subagent Responsibilities (Complexity Offloading)
+
+- **Detailed Task Planning**: Formulate specific execution plans
+- **Multi-tool Collaboration**: Invoke required MCP tools within the subagent
+- **Code Quality Assurance**: Perform code reviews, testing, and optimization
+- **Result Verification and Optimization**: Ensure output aligns with best practices
+
+## Core Principle
+
+The main context focuses on routing, while subagents bear the complexity, ensuring a dual improvement in efficiency and quality.
