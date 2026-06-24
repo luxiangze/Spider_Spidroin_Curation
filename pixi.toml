@@ -52,6 +52,7 @@ langchain = ">=1.2.14,<2"
 langchain-openai = ">=1.1.12,<2"
 pygenometracks = ">=3.3,<4"
 orfanage = ">=1.2.0,<2"
+emboss = ">=6.6.0,<7"
 
 [pypi-dependencies]
 mkdocs = "*"
